@@ -35,16 +35,20 @@ class BotHandlers:
             first_name=telegram_user.first_name,
         )
 
-        # If user already completed onboarding, show main menu
+        # If user already completed onboarding, show main menu with personalized greeting
         if user.onboarding_completed:
-            await update.message.reply_text("С возвращением! 👋\n\nЧем могу помочь?", reply_markup=kb.get_main_menu_keyboard(),
-            parse_mode=ParseMode.HTML,
-        )
+            greeting = f"С возвращением, {user.first_name}! 👋\n\nЧем могу помочь?" if user.first_name else "С возвращением! 👋\n\nЧем могу помочь?"
+            await update.message.reply_text(
+                greeting,
+                reply_markup=kb.get_main_menu_keyboard(),
+                parse_mode=ParseMode.HTML,
+            )
             return
 
         # Start onboarding sequence
-        # Step 1: Welcome
-        await update.message.reply_text(msg.WELCOME_MESSAGE, parse_mode=ParseMode.HTML)
+        # Step 1: Welcome with personalization
+        welcome_msg = msg.get_welcome_message(user.first_name)
+        await update.message.reply_text(welcome_msg, parse_mode=ParseMode.HTML)
         await asyncio.sleep(1.5)
 
         # Step 2: Ethical boundaries
@@ -52,7 +56,9 @@ class BotHandlers:
         await asyncio.sleep(2)
 
         # Step 3: Privacy and consent
-        await update.message.reply_text(msg.PRIVACY_INTRO + "\n\n" + msg.CONSENT_QUESTION, reply_markup=kb.get_consent_keyboard(),
+        await update.message.reply_text(
+            msg.PRIVACY_INTRO + "\n\n" + msg.CONSENT_QUESTION,
+            reply_markup=kb.get_consent_keyboard(),
             parse_mode=ParseMode.HTML,
         )
 
@@ -67,12 +73,16 @@ class BotHandlers:
         if query.data == "consent_yes":
             # Give consent
             self.user_service.give_consent(user)
-            self.user_service.complete_onboarding(user)
+            # Don't complete onboarding yet - offer tour first
 
-            # Show welcome message with main menu
-            await query.edit_message_text(msg.CONSENT_ACCEPTED, reply_markup=kb.get_main_menu_keyboard(),
-            parse_mode=ParseMode.HTML,
-        )
+            # Show consent accepted + tour offer
+            await query.edit_message_text(msg.CONSENT_ACCEPTED, parse_mode=ParseMode.HTML)
+            await asyncio.sleep(1)
+            await query.message.reply_text(
+                msg.TOUR_OFFER,
+                reply_markup=kb.get_tour_offer_keyboard(),
+                parse_mode=ParseMode.HTML,
+            )
 
         elif query.data == "privacy_policy":
             # Show privacy policy (placeholder for now)
@@ -96,7 +106,9 @@ class BotHandlers:
 
 [Полная версия: ссылка]"""
 
-            await query.edit_message_text(privacy_text, reply_markup=kb.get_consent_keyboard(),
+            await query.edit_message_text(
+                privacy_text,
+                reply_markup=kb.get_consent_keyboard(),
                 parse_mode="Markdown",
             )
 
@@ -489,9 +501,66 @@ _Функция оплаты появится в следующей версии
 Версия: **MVP 1.0 (Phase 1)**
 Разработчик: AI Friends Team"""
 
-        await query.edit_message_text(about_text, reply_markup=kb.get_back_to_menu_keyboard(),
+        await query.edit_message_text(
+            about_text,
+            reply_markup=kb.get_back_to_menu_keyboard(),
             parse_mode="Markdown",
         )
+
+    async def tour_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle interactive tour callbacks"""
+        query = update.callback_query
+        await query.answer()
+
+        telegram_user = update.effective_user
+        user = self.user_service.get_or_create_user(telegram_id=telegram_user.id)
+
+        if query.data == "tour_start":
+            # Start tour - show panic demo
+            self.user_service.set_onboarding_step(user, "tour_panic")
+            await query.edit_message_text(
+                msg.TOUR_PANIC_INTRO,
+                reply_markup=kb.get_tour_next_keyboard("panic_demo"),
+                parse_mode=ParseMode.HTML,
+            )
+
+        elif query.data == "tour_skip":
+            # Skip tour - complete onboarding and show main menu
+            self.user_service.complete_onboarding(user)
+            await query.edit_message_text(
+                msg.TOUR_SKIP_MESSAGE,
+                reply_markup=kb.get_main_menu_keyboard(),
+                parse_mode=ParseMode.HTML,
+            )
+
+        elif query.data == "tour_panic_demo":
+            # Show panic demo
+            await query.edit_message_text(msg.TOUR_PANIC_DEMO, parse_mode=ParseMode.HTML)
+            await asyncio.sleep(3)
+            await query.message.reply_text(
+                msg.TOUR_ANALYSIS_INTRO,
+                reply_markup=kb.get_tour_next_keyboard("journal"),
+                parse_mode=ParseMode.HTML,
+            )
+
+        elif query.data == "tour_journal":
+            # Show journal intro
+            self.user_service.set_onboarding_step(user, "tour_journal")
+            await query.edit_message_text(
+                msg.TOUR_JOURNAL_INTRO,
+                reply_markup=kb.get_tour_complete_keyboard(),
+                parse_mode=ParseMode.HTML,
+            )
+
+        elif query.data == "tour_complete":
+            # Complete tour and onboarding
+            self.user_service.complete_tour(user)
+            self.user_service.complete_onboarding(user)
+            await query.edit_message_text(
+                msg.TOUR_COMPLETE,
+                reply_markup=kb.get_main_menu_keyboard(),
+                parse_mode=ParseMode.HTML,
+            )
 
     async def error_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle errors"""

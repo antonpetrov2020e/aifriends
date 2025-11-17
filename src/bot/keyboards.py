@@ -149,3 +149,38 @@ def get_continue_or_menu_keyboard() -> InlineKeyboardMarkup:
         ],
     ]
     return InlineKeyboardMarkup(keyboard)
+
+
+# Onboarding Tour Keyboards
+
+def get_tour_offer_keyboard() -> InlineKeyboardMarkup:
+    """Offer to start interactive tour"""
+    keyboard = [
+        [
+            InlineKeyboardButton("✨ Да, покажи!", callback_data="tour_start"),
+        ],
+        [
+            InlineKeyboardButton("Потом, хочу в меню", callback_data="tour_skip"),
+        ],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_tour_next_keyboard(next_step: str) -> InlineKeyboardMarkup:
+    """Next button for tour progression"""
+    keyboard = [
+        [
+            InlineKeyboardButton("Дальше →", callback_data=f"tour_{next_step}"),
+        ],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_tour_complete_keyboard() -> InlineKeyboardMarkup:
+    """Complete tour and go to main menu"""
+    keyboard = [
+        [
+            InlineKeyboardButton("Понятно! 💪", callback_data="tour_complete"),
+        ],
+    ]
+    return InlineKeyboardMarkup(keyboard)

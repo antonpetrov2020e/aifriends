@@ -45,6 +45,20 @@ class UserService:
         self.db.refresh(user)
         return user
 
+    def set_onboarding_step(self, user: User, step: str) -> User:
+        """Set current onboarding step"""
+        user.onboarding_step = step
+        self.db.commit()
+        self.db.refresh(user)
+        return user
+
+    def complete_tour(self, user: User) -> User:
+        """Mark interactive tour as completed"""
+        user.tour_completed = True
+        self.db.commit()
+        self.db.refresh(user)
+        return user
+
     def check_analysis_limit(self, user: User, free_limit: int = 3) -> tuple[bool, int]:
         """
         Check if user can perform another analysis

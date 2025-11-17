@@ -76,6 +76,11 @@ def main():
         CallbackQueryHandler(handlers.consent_callback, pattern="^privacy_policy$")
     )
 
+    # Tour callbacks
+    application.add_handler(
+        CallbackQueryHandler(handlers.tour_callback, pattern="^tour_")
+    )
+
     # Main menu callbacks
     application.add_handler(
         CallbackQueryHandler(handlers.main_menu_callback, pattern="^back_to_menu$")

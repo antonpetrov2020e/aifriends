@@ -32,6 +32,8 @@ class User(Base):
     consent_given = Column(Boolean, default=False)
     consent_date = Column(DateTime, nullable=True)
     onboarding_completed = Column(Boolean, default=False)
+    onboarding_step = Column(String(50), default="start")  # Track current onboarding step
+    tour_completed = Column(Boolean, default=False)  # Whether user completed interactive tour
 
     # Premium status
     is_premium = Column(Boolean, default=False)
