@@ -235,9 +235,14 @@ class BotHandlers:
 
         if waiting_for == "situation_details":
             # User provided situation details, now ask about feelings
-            await update.message.reply_text(msg.ANALYSIS_FEELINGS_PROMPT, reply_markup=kb.get_feelings_keyboard(),
-            parse_mode=ParseMode.HTML,
-        )
+            # Store situation in context
+            context.user_data["current_situation"] = text
+
+            await update.message.reply_text(
+                msg.ANALYSIS_FEELINGS_PROMPT,
+                reply_markup=kb.get_feelings_keyboard(),
+                parse_mode=ParseMode.HTML,
+            )
             # Clear waiting state
             context.user_data["waiting_for"] = None
 
@@ -265,9 +270,11 @@ class BotHandlers:
             has_insight = await self.ai_service.detect_insight(text)
             if has_insight:
                 await asyncio.sleep(1)
-                await update.message.reply_text(msg.INSIGHT_DETECTED + "\n\n" + msg.INSIGHT_SHARE_OFFER, reply_markup=kb.get_insight_share_keyboard(),
-            parse_mode=ParseMode.HTML,
-        )
+                await update.message.reply_text(
+                    msg.INSIGHT_DETECTED + "\n\n" + msg.INSIGHT_SHARE_OFFER,
+                    reply_markup=kb.get_insight_share_keyboard(),
+                    parse_mode=ParseMode.HTML,
+                )
 
         elif conversation_mode == "thinking_dialogue":
             # User is in thinking dialogue (Socratic method) - use AI
@@ -298,17 +305,19 @@ class BotHandlers:
             has_insight = await self.ai_service.detect_insight(text)
             if has_insight:
                 await asyncio.sleep(1)
-                await update.message.reply_text(msg.INSIGHT_DETECTED + "\n\n" + msg.INSIGHT_SHARE_OFFER, reply_markup=kb.get_insight_share_keyboard(),
-            parse_mode=ParseMode.HTML,
-        )
+                await update.message.reply_text(
+                    msg.INSIGHT_DETECTED + "\n\n" + msg.INSIGHT_SHARE_OFFER,
+                    reply_markup=kb.get_insight_share_keyboard(),
+                    parse_mode=ParseMode.HTML,
+                )
 
         else:
             # Default: no active conversation
             await update.message.reply_text(
                 "Не совсем поняла 🤔\n\nВыбери, пожалуйста, что тебе нужно:",
                 reply_markup=kb.get_main_menu_keyboard(),
-            parse_mode=ParseMode.HTML,
-        )
+                parse_mode=ParseMode.HTML,
+            )
 
     async def feeling_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle feeling selection and provide AI-powered validation"""
