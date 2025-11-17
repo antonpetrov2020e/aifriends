@@ -146,10 +146,41 @@ class InsightCard(Base):
 
 
 def init_db(database_url: str):
-    """Initialize database"""
+    """Initialize database with automatic migration support"""
     engine = create_engine(database_url)
+
+    # Create all tables
     Base.metadata.create_all(engine)
+
+    # Run migrations for existing databases
+    _migrate_add_preferred_name(engine)
+
     return engine
+
+
+def _migrate_add_preferred_name(engine):
+    """Migration: Add preferred_name column to users table if missing"""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(engine)
+
+    # Check if users table exists
+    if 'users' not in inspector.get_table_names():
+        return  # Table doesn't exist yet, will be created by create_all
+
+    # Check if preferred_name column exists
+    columns = [col['name'] for col in inspector.get_columns('users')]
+
+    if 'preferred_name' not in columns:
+        # Add the column using raw SQL (SQLite doesn't support ALTER TABLE through SQLAlchemy easily)
+        with engine.connect() as conn:
+            try:
+                conn.execute(text("ALTER TABLE users ADD COLUMN preferred_name VARCHAR(255)"))
+                conn.commit()
+                print("✅ Migration: Added 'preferred_name' column to users table")
+            except Exception as e:
+                print(f"⚠️  Migration warning: {e}")
+                # Column might already exist, ignore
 
 
 def get_session(engine):
