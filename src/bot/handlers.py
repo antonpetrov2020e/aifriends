@@ -12,16 +12,18 @@ from . import messages as msg
 from . import keyboards as kb
 from ..services.user_service import UserService
 from ..services.ai_service import AIService
+from ..services.memory_service import MemoryService
 from ..database.models import User, Conversation, Message
 
 
 class BotHandlers:
     """Main bot handlers class"""
 
-    def __init__(self, db_session: Session, ai_service: AIService, free_analysis_limit: int = 3):
+    def __init__(self, db_session: Session, ai_service: AIService, memory_service: MemoryService, free_analysis_limit: int = 3):
         self.db = db_session
         self.user_service = UserService(db_session)
         self.ai_service = ai_service
+        self.memory_service = memory_service
         self.free_analysis_limit = free_analysis_limit
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -106,6 +108,17 @@ class BotHandlers:
         await query.answer()
 
         if query.data == "back_to_menu":
+            # Save conversation to memory before returning to menu (Phase 2: RAG)
+            conversation_mode = context.user_data.get("conversation_mode")
+            if conversation_mode in ["panic_talk", "thinking_dialogue"]:
+                telegram_user = update.effective_user
+                user = self.user_service.get_or_create_user(telegram_id=telegram_user.id)
+                await self.save_conversation_to_memory(user, context)
+
+                # Clear conversation context
+                context.user_data["conversation_mode"] = None
+                context.user_data["conversation_history"] = []
+
             await query.edit_message_text("Чем могу помочь?", reply_markup=kb.get_main_menu_keyboard(),
             parse_mode=ParseMode.HTML,
         )
@@ -273,11 +286,27 @@ class BotHandlers:
             conversation_history.append({"role": "user", "content": text})
 
             try:
+                # Get user from database
+                telegram_user = update.effective_user
+                user = self.user_service.get_or_create_user(telegram_id=telegram_user.id)
+
+                # Get relevant memories for context (Phase 2: RAG)
+                memory_context = self.memory_service.get_context_for_query(
+                    user=user,
+                    query=text,
+                    max_tokens=300,  # Limit context size
+                )
+
+                # Build context with memory
+                full_context = "Пользователь в режиме 'паника' - нужна эмоциональная поддержка, валидация чувств и короткий эмпатичный ответ (2-3 предложения). Не давай советов, просто поддержи."
+                if memory_context:
+                    full_context += f"\n\n{memory_context}"
+
                 # Get AI response
                 response = await self.ai_service.chat(
                     user_message=text,
                     conversation_history=conversation_history[:-1],  # Exclude current message
-                    context="Пользователь в режиме 'паника' - нужна эмоциональная поддержка, валидация чувств и короткий эмпатичный ответ (2-3 предложения). Не давай советов, просто поддержи."
+                    context=full_context
                 )
 
                 # Add AI response to history
@@ -318,11 +347,27 @@ class BotHandlers:
             conversation_history.append({"role": "user", "content": text})
 
             try:
+                # Get user from database
+                telegram_user = update.effective_user
+                user = self.user_service.get_or_create_user(telegram_id=telegram_user.id)
+
+                # Get relevant memories for context (Phase 2: RAG)
+                memory_context = self.memory_service.get_context_for_query(
+                    user=user,
+                    query=text,
+                    max_tokens=300,  # Limit context size
+                )
+
+                # Build context with memory
+                full_context = "Продолжай задавать короткие наводящие вопросы (1-2 предложения). Помоги пользователю самостоятельно прийти к решению. Не давай прямых советов."
+                if memory_context:
+                    full_context += f"\n\n{memory_context}"
+
                 # Get AI response with Socratic method
                 response = await self.ai_service.chat(
                     user_message=text,
                     conversation_history=conversation_history[:-1],  # Exclude current message
-                    context="Продолжай задавать короткие наводящие вопросы (1-2 предложения). Помоги пользователю самостоятельно прийти к решению. Не давай прямых советов."
+                    context=full_context
                 )
 
                 # Add AI response to history
@@ -492,6 +537,111 @@ _Функция оплаты появится в следующей версии
         await query.edit_message_text(about_text, reply_markup=kb.get_back_to_menu_keyboard(),
             parse_mode="Markdown",
         )
+
+    async def save_conversation_to_memory(self, user: User, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Save current conversation to long-term memory (Phase 2: RAG)
+
+        Args:
+            user: User object
+            context: Telegram context with conversation history
+        """
+        try:
+            conversation_history = context.user_data.get("conversation_history", [])
+
+            # Only save if there's meaningful conversation (at least 2 exchanges)
+            if len(conversation_history) < 4:  # 2 user + 2 assistant = 4 messages minimum
+                return
+
+            # Create a temporary conversation for extraction
+            # Note: We're not using the Conversation model here as this is a simplified version
+            # In production, you'd create proper Conversation and Message records
+
+            # Format conversation for extraction
+            conversation_text = "\n".join([
+                f"{'Пользователь' if msg['role'] == 'user' else 'Помощник'}: {msg['content']}"
+                for msg in conversation_history
+            ])
+
+            # Use a simple approach: create a manual "conversation" structure
+            # In a full implementation, you'd query actual Conversation/Message records
+            from ..database.models import Conversation as ConvModel
+
+            # Create temporary conversation object (won't be saved to DB)
+            temp_conversation = type('obj', (object,), {
+                'id': 0,  # Temporary ID
+                'conversation_type': context.user_data.get("conversation_mode", "general"),
+            })()
+
+            # Mock the message querying by creating temp message objects
+            class TempMessage:
+                def __init__(self, role, content, created_at):
+                    self.role = role
+                    self.content = content
+                    self.created_at = created_at
+
+            import datetime
+
+            # Temporarily patch the DB query to return our in-memory messages
+            original_query = self.db.query
+            temp_messages = [
+                TempMessage(msg['role'], msg['content'], datetime.datetime.utcnow())
+                for msg in conversation_history
+            ]
+
+            # Use AI service to extract entities
+            entities = await self.ai_service.extract_entities(conversation_text)
+
+            # Store memories directly
+            memories = []
+
+            # Store summary
+            if entities.get("summary"):
+                memory = self.memory_service.store_memory(
+                    user=user,
+                    content=entities["summary"],
+                    memory_type="summary",
+                    importance=7,
+                    metadata={
+                        "conversation_type": context.user_data.get("conversation_mode", "general"),
+                    }
+                )
+                memories.append(memory)
+
+            # Store names/entities
+            for name in entities.get("names", []):
+                memory = self.memory_service.store_memory(
+                    user=user,
+                    content=f"Упоминался человек: {name}",
+                    memory_type="entity",
+                    importance=8,
+                    metadata={"entity_name": name}
+                )
+                memories.append(memory)
+
+            # Store emotions
+            if entities.get("emotions"):
+                emotions_text = f"Испытывала: {', '.join(entities['emotions'])}"
+                memory = self.memory_service.store_memory(
+                    user=user,
+                    content=emotions_text,
+                    memory_type="emotion",
+                    importance=6,
+                    metadata={"emotions": entities["emotions"]}
+                )
+                memories.append(memory)
+
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"Saved {len(memories)} memories for user {user.id}")
+
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error saving conversation to memory: {type(e).__name__}: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            # Don't fail the user experience if memory saving fails
 
     async def error_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle errors"""

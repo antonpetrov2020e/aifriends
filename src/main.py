@@ -16,6 +16,7 @@ from .config import settings
 from .database import init_db, get_session
 from .bot.handlers import BotHandlers
 from .services.ai_service import AIService
+from .services.memory_service import MemoryService
 
 
 # Configure logging
@@ -42,11 +43,20 @@ def main():
         model=settings.llm_model,
     )
 
+    # Initialize Memory service (Phase 2: RAG)
+    logger.info("Initializing Memory service (RAG)...")
+    memory_service = MemoryService(
+        db_session=db_session,
+        chroma_db_path=settings.chroma_db_path,
+    )
+    logger.info("Memory service initialized successfully")
+
     # Initialize handlers
     logger.info("Initializing bot handlers...")
     handlers = BotHandlers(
         db_session=db_session,
         ai_service=ai_service,
+        memory_service=memory_service,
         free_analysis_limit=settings.free_analysis_per_week,
     )
 

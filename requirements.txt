@@ -11,9 +11,10 @@ openai>=1.50.0
 # Optional: Anthropic direct integration (Phase 2)
 # anthropic==0.18.1
 
-# Phase 2 dependencies (optional, uncomment when needed)
-# chromadb==0.4.22
-# Pillow==10.2.0
+# Phase 2 dependencies - RAG Memory System
+chromadb>=0.4.22
+sentence-transformers>=2.2.2  # For embeddings
+# Pillow==10.2.0  # Will be needed for Phase 3 (Insight Cards)
 
 # Data Processing (updated for Python 3.13 compatibility)
 pydantic>=2.10.0
