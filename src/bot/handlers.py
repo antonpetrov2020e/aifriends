@@ -161,9 +161,11 @@ class BotHandlers:
             # Switch to free-form conversation mode
             await query.edit_message_text(
                 "Я слушаю тебя 👂\n\nПиши всё, что хочешь. Без фильтров.",
+                parse_mode=ParseMode.HTML,
             )
             # Set context for conversation tracking
             context.user_data["conversation_mode"] = "panic_talk"
+            context.user_data["conversation_history"] = []  # Initialize empty history
 
     async def analysis_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Start 'Analysis' flow - check limits first"""
@@ -253,26 +255,41 @@ class BotHandlers:
             # Add user message to history
             conversation_history.append({"role": "user", "content": text})
 
-            # Get AI response
-            response = await self.ai_service.chat(
-                user_message=text,
-                conversation_history=conversation_history[:-1],  # Exclude current message
-                context="Пользователь в режиме 'паника' - нужна эмоциональная поддержка и валидация"
-            )
+            try:
+                # Get AI response
+                response = await self.ai_service.chat(
+                    user_message=text,
+                    conversation_history=conversation_history[:-1],  # Exclude current message
+                    context="Пользователь в режиме 'паника' - нужна эмоциональная поддержка, валидация чувств и короткий эмпатичный ответ (2-3 предложения). Не давай советов, просто поддержи."
+                )
 
-            # Add AI response to history
-            conversation_history.append({"role": "assistant", "content": response})
-            context.user_data["conversation_history"] = conversation_history
+                # Add AI response to history
+                conversation_history.append({"role": "assistant", "content": response})
+                context.user_data["conversation_history"] = conversation_history
 
-            await update.message.reply_text(response, parse_mode=ParseMode.HTML)
+                await update.message.reply_text(response, parse_mode=ParseMode.HTML)
 
-            # Check for insight
-            has_insight = await self.ai_service.detect_insight(text)
-            if has_insight:
-                await asyncio.sleep(1)
+                # Check for insight (don't block on error)
+                try:
+                    has_insight = await self.ai_service.detect_insight(text)
+                    if has_insight:
+                        await asyncio.sleep(1)
+                        await update.message.reply_text(
+                            msg.INSIGHT_DETECTED + "\n\n" + msg.INSIGHT_SHARE_OFFER,
+                            reply_markup=kb.get_insight_share_keyboard(),
+                            parse_mode=ParseMode.HTML,
+                        )
+                except:
+                    pass  # Silently ignore insight detection errors
+
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Error in panic_talk mode: {e}")
+                # Show empathetic error message
                 await update.message.reply_text(
-                    msg.INSIGHT_DETECTED + "\n\n" + msg.INSIGHT_SHARE_OFFER,
-                    reply_markup=kb.get_insight_share_keyboard(),
+                    "Слушай, у меня что-то тормозит сейчас 😔\n\nНо я здесь и слышу тебя. Продолжай, если хочешь, или можем вернуться к главному меню.",
+                    reply_markup=kb.get_back_to_menu_keyboard(),
                     parse_mode=ParseMode.HTML,
                 )
 
@@ -283,26 +300,41 @@ class BotHandlers:
             # Add user message to history
             conversation_history.append({"role": "user", "content": text})
 
-            # Get AI response with Socratic method
-            response = await self.ai_service.chat(
-                user_message=text,
-                conversation_history=conversation_history[:-1],  # Exclude current message
-                context="Продолжай задавать короткие наводящие вопросы (1-2 предложения). Помоги пользователю самостоятельно прийти к решению. Не давай прямых советов."
-            )
+            try:
+                # Get AI response with Socratic method
+                response = await self.ai_service.chat(
+                    user_message=text,
+                    conversation_history=conversation_history[:-1],  # Exclude current message
+                    context="Продолжай задавать короткие наводящие вопросы (1-2 предложения). Помоги пользователю самостоятельно прийти к решению. Не давай прямых советов."
+                )
 
-            # Add AI response to history
-            conversation_history.append({"role": "assistant", "content": response})
-            context.user_data["conversation_history"] = conversation_history
+                # Add AI response to history
+                conversation_history.append({"role": "assistant", "content": response})
+                context.user_data["conversation_history"] = conversation_history
 
-            await update.message.reply_text(response, parse_mode=ParseMode.HTML)
+                await update.message.reply_text(response, parse_mode=ParseMode.HTML)
 
-            # Check for insight
-            has_insight = await self.ai_service.detect_insight(text)
-            if has_insight:
-                await asyncio.sleep(1)
+                # Check for insight (don't block on error)
+                try:
+                    has_insight = await self.ai_service.detect_insight(text)
+                    if has_insight:
+                        await asyncio.sleep(1)
+                        await update.message.reply_text(
+                            msg.INSIGHT_DETECTED + "\n\n" + msg.INSIGHT_SHARE_OFFER,
+                            reply_markup=kb.get_insight_share_keyboard(),
+                            parse_mode=ParseMode.HTML,
+                        )
+                except:
+                    pass  # Silently ignore insight detection errors
+
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Error in thinking_dialogue mode: {e}")
+                # Show empathetic error message
                 await update.message.reply_text(
-                    msg.INSIGHT_DETECTED + "\n\n" + msg.INSIGHT_SHARE_OFFER,
-                    reply_markup=kb.get_insight_share_keyboard(),
+                    "Упс, что-то пошло не так 😔\n\nДавай попробуем ещё раз, или можем вернуться к главному меню.",
+                    reply_markup=kb.get_back_to_menu_keyboard(),
                     parse_mode=ParseMode.HTML,
                 )
 
