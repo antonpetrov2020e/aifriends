@@ -19,8 +19,8 @@ openai>=1.50.0
 pydantic>=2.10.0
 pydantic-settings>=2.7.0
 
-# Database
-sqlalchemy==2.0.25
+# Database (updated for Python 3.13 compatibility)
+sqlalchemy>=2.0.36
 
 # HTTP Client (version compatible with python-telegram-bot)
 httpx~=0.25.2
