@@ -8,8 +8,11 @@ python-telegram-bot==20.7
 aiogram==3.3.0
 
 # AI/LLM Integration
-anthropic==0.18.1
+# OpenAI library works with OpenRouter via compatible API
 openai==1.12.0
+
+# Optional: Anthropic direct integration (Phase 2)
+# anthropic==0.18.1
 
 # Vector Database (for future Phase 2)
 chromadb==0.4.22

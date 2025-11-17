@@ -15,6 +15,7 @@ from telegram.ext import (
 from .config import settings
 from .database import init_db, get_session
 from .bot.handlers import BotHandlers
+from .services.ai_service import AIService
 
 
 # Configure logging
@@ -33,10 +34,19 @@ def main():
     engine = init_db(settings.database_url)
     db_session = get_session(engine)
 
+    # Initialize AI service
+    logger.info("Initializing AI service...")
+    logger.info(f"Using model: {settings.llm_model}")
+    ai_service = AIService(
+        api_key=settings.openrouter_api_key,
+        model=settings.llm_model,
+    )
+
     # Initialize handlers
     logger.info("Initializing bot handlers...")
     handlers = BotHandlers(
         db_session=db_session,
+        ai_service=ai_service,
         free_analysis_limit=settings.free_analysis_per_week,
     )
 

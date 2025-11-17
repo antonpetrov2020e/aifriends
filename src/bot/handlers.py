@@ -10,15 +10,17 @@ from sqlalchemy.orm import Session
 from . import messages as msg
 from . import keyboards as kb
 from ..services.user_service import UserService
-from ..database.models import User
+from ..services.ai_service import AIService
+from ..database.models import User, Conversation, Message
 
 
 class BotHandlers:
     """Main bot handlers class"""
 
-    def __init__(self, db_session: Session, free_analysis_limit: int = 3):
+    def __init__(self, db_session: Session, ai_service: AIService, free_analysis_limit: int = 3):
         self.db = db_session
         self.user_service = UserService(db_session)
+        self.ai_service = ai_service
         self.free_analysis_limit = free_analysis_limit
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -252,26 +254,67 @@ class BotHandlers:
             context.user_data["waiting_for"] = None
 
         elif conversation_mode == "panic_talk":
-            # In panic talk mode - provide validation
-            response = """Я слышу тебя 💙
+            # In panic talk mode - use AI to provide empathetic response
+            conversation_history = context.user_data.get("conversation_history", [])
 
-Спасибо, что доверяешь мне это.
+            # Add user message to history
+            conversation_history.append({"role": "user", "content": text})
 
-Хочешь продолжить или попробуем разобрать ситуацию структурно?"""
-
-            await update.message.reply_text(
-                response,
-                reply_markup=kb.get_continue_or_menu_keyboard(),
+            # Get AI response
+            response = await self.ai_service.chat(
+                user_message=text,
+                conversation_history=conversation_history[:-1],  # Exclude current message
+                context="Пользователь в режиме 'паника' - нужна эмоциональная поддержка и валидация"
             )
 
-        elif conversation_mode == "thinking_dialogue":
-            # User is in thinking dialogue (Socratic method)
-            # Phase 1: Simple validation
-            response = """Хорошая мысль.
-
-А теперь вопрос: что ты сама хочешь с этим сделать?"""
+            # Add AI response to history
+            conversation_history.append({"role": "assistant", "content": response})
+            context.user_data["conversation_history"] = conversation_history
 
             await update.message.reply_text(response)
+
+            # Check for insight
+            has_insight = await self.ai_service.detect_insight(text)
+            if has_insight:
+                await asyncio.sleep(1)
+                await update.message.reply_text(
+                    msg.INSIGHT_DETECTED + "\n\n" + msg.INSIGHT_SHARE_OFFER,
+                    reply_markup=kb.get_insight_share_keyboard(),
+                )
+
+        elif conversation_mode == "thinking_dialogue":
+            # User is in thinking dialogue (Socratic method) - use AI
+            conversation_history = context.user_data.get("conversation_history", [])
+            situation = context.user_data.get("current_situation", "")
+            feeling = context.user_data.get("current_feeling", "")
+
+            # Add context about situation and feeling
+            context_str = f"Ситуация: {situation}, Чувство: {feeling}"
+
+            # Add user message to history
+            conversation_history.append({"role": "user", "content": text})
+
+            # Get AI response with Socratic method
+            response = await self.ai_service.chat(
+                user_message=text,
+                conversation_history=conversation_history[:-1],
+                context=f"{context_str}. Используй сократический метод - задавай наводящие вопросы, не давай прямых советов."
+            )
+
+            # Add AI response to history
+            conversation_history.append({"role": "assistant", "content": response})
+            context.user_data["conversation_history"] = conversation_history
+
+            await update.message.reply_text(response)
+
+            # Check for insight
+            has_insight = await self.ai_service.detect_insight(text)
+            if has_insight:
+                await asyncio.sleep(1)
+                await update.message.reply_text(
+                    msg.INSIGHT_DETECTED + "\n\n" + msg.INSIGHT_SHARE_OFFER,
+                    reply_markup=kb.get_insight_share_keyboard(),
+                )
 
         else:
             # Default: no active conversation
@@ -281,34 +324,38 @@ class BotHandlers:
             )
 
     async def feeling_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle feeling selection and provide validation"""
+        """Handle feeling selection and provide AI-powered validation"""
         query = update.callback_query
         await query.answer()
 
         feeling = query.data.replace("feeling_", "")
         context.user_data["current_feeling"] = feeling
 
-        # Provide validation based on feeling
-        if feeling == "anger":
-            response = msg.FEELING_ANGER
-        elif feeling == "hurt":
-            response = msg.FEELING_HURT
-        elif feeling == "anxiety":
-            response = msg.FEELING_ANXIETY
-        elif feeling == "confusion":
-            response = msg.FEELING_CONFUSION
-        else:  # unknown
-            response = """Это нормально — не всегда понимать, что чувствуешь.
+        # Get situation context
+        situation = context.user_data.get("current_situation", "")
 
-Иногда это микс из всего сразу.
-
-Давай попробуем разложить по полочкам?"""
+        # Use AI to generate empathetic validation
+        response = await self.ai_service.validate_emotion(
+            emotion=feeling,
+            context=situation
+        )
 
         await query.edit_message_text(response)
         await asyncio.sleep(2)
 
-        # Start Socratic questioning (Phase 1: basic version)
-        await query.message.reply_text(msg.THINKING_WHAT_DO_YOU_WANT)
+        # Start Socratic questioning with AI
+        first_question = await self.ai_service.chat(
+            user_message="",
+            context=f"Пользователь чувствует {feeling} в ситуации: {situation}. Задай первый наводящий вопрос в стиле Socratic method, чтобы помочь разобраться. Например: 'А что ты сама хочешь сейчас?' или 'Чего ты боишься?'"
+        )
+
+        await query.message.reply_text(first_question)
+
+        # Initialize conversation history
+        context.user_data["conversation_history"] = [
+            {"role": "assistant", "content": response},
+            {"role": "assistant", "content": first_question}
+        ]
 
         # Set conversation mode for thinking dialogue
         context.user_data["conversation_mode"] = "thinking_dialogue"

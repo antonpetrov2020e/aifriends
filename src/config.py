@@ -12,7 +12,12 @@ class Settings(BaseSettings):
     telegram_bot_token: str = Field(..., alias="TELEGRAM_BOT_TOKEN")
 
     # AI/LLM
-    anthropic_api_key: str = Field(..., alias="ANTHROPIC_API_KEY")
+    # OpenRouter (primary provider)
+    openrouter_api_key: str = Field(..., alias="OPENROUTER_API_KEY")
+    llm_model: str = Field(default="google/gemini-2.0-flash-exp:free", alias="LLM_MODEL")
+
+    # Alternative providers (optional)
+    anthropic_api_key: str = Field(default="", alias="ANTHROPIC_API_KEY")
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
 
     # Application

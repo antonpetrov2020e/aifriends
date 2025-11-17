@@ -13,15 +13,17 @@
 
 ---
 
-## Шаг 2: Получите Anthropic API Key
+## Шаг 2: Получите OpenRouter API Key (БЕСПЛАТНО!)
 
-1. Перейдите на [console.anthropic.com](https://console.anthropic.com)
-2. Зарегистрируйтесь или войдите
-3. Перейдите в раздел "API Keys"
-4. Создайте новый ключ
-5. Скопируйте ключ (начинается с `sk-ant-`)
+1. Перейдите на [openrouter.ai](https://openrouter.ai)
+2. Нажмите "Sign In" (можно через Google/GitHub)
+3. Перейдите в раздел "Keys" → "Create Key"
+4. Скопируйте ключ (начинается с `sk-or-`)
 
-**Важно**: На аккаунте должны быть средства (~$5 на тестирование)
+**Преимущества**:
+- ✅ **Бесплатно** для модели Gemini 2.0 Flash
+- ✅ Не нужна карта или депозит
+- ✅ Отлично подходит для тестирования
 
 ---
 
@@ -54,7 +56,8 @@ nano .env  # или используйте VS Code, vim, etc.
 
 ```env
 TELEGRAM_BOT_TOKEN=ваш_токен_от_BotFather
-ANTHROPIC_API_KEY=ваш_ключ_от_anthropic
+OPENROUTER_API_KEY=ваш_ключ_от_openrouter
+LLM_MODEL=google/gemini-2.0-flash-exp:free
 ```
 
 Сохраните файл.
@@ -132,9 +135,13 @@ pip install -r requirements.txt
 
 Проверьте, что в `.env` указан правильный токен от @BotFather.
 
-### Ошибка: `Anthropic API key not found`
+### Ошибка: `OpenRouter API key not found`
 
-Проверьте, что в `.env` указан ключ от Anthropic.
+Проверьте, что в `.env` указан ключ от OpenRouter.
+
+### Бот отвечает медленно
+
+Это нормально для бесплатной модели. Gemini 2.0 Flash обычно отвечает за 2-5 секунд.
 
 ### Бот не отвечает
 
