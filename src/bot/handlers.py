@@ -279,11 +279,6 @@ class BotHandlers:
         elif conversation_mode == "thinking_dialogue":
             # User is in thinking dialogue (Socratic method) - use AI
             conversation_history = context.user_data.get("conversation_history", [])
-            situation = context.user_data.get("current_situation", "")
-            feeling = context.user_data.get("current_feeling", "")
-
-            # Add context about situation and feeling
-            context_str = f"Ситуация: {situation}, Чувство: {feeling}"
 
             # Add user message to history
             conversation_history.append({"role": "user", "content": text})
@@ -291,8 +286,8 @@ class BotHandlers:
             # Get AI response with Socratic method
             response = await self.ai_service.chat(
                 user_message=text,
-                conversation_history=conversation_history[:-1],
-                context=f"{context_str}. Используй сократический метод - задавай наводящие вопросы, не давай прямых советов."
+                conversation_history=conversation_history[:-1],  # Exclude current message
+                context="Продолжай задавать короткие наводящие вопросы (1-2 предложения). Помоги пользователю самостоятельно прийти к решению. Не давай прямых советов."
             )
 
             # Add AI response to history
@@ -320,7 +315,7 @@ class BotHandlers:
             )
 
     async def feeling_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle feeling selection and provide AI-powered validation"""
+        """Handle feeling selection and provide validation"""
         query = update.callback_query
         await query.answer()
 
@@ -330,28 +325,39 @@ class BotHandlers:
         # Get situation context
         situation = context.user_data.get("current_situation", "")
 
-        # Use AI to generate empathetic validation
-        response = await self.ai_service.validate_emotion(
-            emotion=feeling,
-            context=situation
-        )
+        # Use predefined empathetic messages (more reliable than AI for this)
+        feeling_messages = {
+            "anger": msg.FEELING_ANGER,
+            "hurt": msg.FEELING_HURT,
+            "anxiety": msg.FEELING_ANXIETY,
+            "confusion": msg.FEELING_CONFUSION,
+        }
+
+        response = feeling_messages.get(feeling, msg.FEELING_CONFUSION)
 
         await query.edit_message_text(response, parse_mode=ParseMode.HTML)
         await asyncio.sleep(2)
 
         # Start Socratic questioning with AI
+        feeling_names = {
+            "anger": "злость",
+            "hurt": "обиду",
+            "anxiety": "тревогу",
+            "confusion": "растерянность",
+        }
+        feeling_name = feeling_names.get(feeling, feeling)
+
         first_question = await self.ai_service.chat(
-            user_message=f"Я чувствую {feeling} в такой ситуации: {situation}",
+            user_message=f"Ситуация: {situation}\nЯ чувствую: {feeling_name}",
             conversation_history=[],
-            context=f"Задай первый наводящий вопрос в стиле Socratic method, чтобы помочь пользователю разобраться в чувствах. Не спрашивай про ситуацию - она уже известна. Спроси про её желания, страхи или намерения."
+            context=f"Пользователь описал ситуацию и выразил чувство. Задай ОДИН короткий (1-2 предложения) наводящий вопрос в стиле Socratic method. Помоги разобраться в её настоящих желаниях, страхах или границах. Не повторяй ситуацию, не давай советов - только вопрос."
         )
 
         await query.message.reply_text(first_question, parse_mode=ParseMode.HTML)
 
         # Initialize conversation history
         context.user_data["conversation_history"] = [
-            {"role": "user", "content": f"Я чувствую {feeling} в такой ситуации: {situation}"},
-            {"role": "assistant", "content": response},
+            {"role": "user", "content": f"Ситуация: {situation}\nЯ чувствую: {feeling_name}"},
             {"role": "assistant", "content": first_question}
         ]
 
