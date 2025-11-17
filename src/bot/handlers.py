@@ -1,8 +1,10 @@
 """
 Telegram bot handlers for AI Friends bot
 Implements Phase 1: Foundation (Onboarding, Panic, Structured Analysis)
+Phase 2: Memory & Viral Cards
 """
 import asyncio
+from typing import List, Dict
 from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
@@ -18,10 +20,19 @@ from ..database.models import User, Conversation, Message
 class BotHandlers:
     """Main bot handlers class"""
 
-    def __init__(self, db_session: Session, ai_service: AIService, free_analysis_limit: int = 3):
+    def __init__(
+        self,
+        db_session: Session,
+        ai_service: AIService,
+        memory_service,
+        card_service,
+        free_analysis_limit: int = 3
+    ):
         self.db = db_session
         self.user_service = UserService(db_session)
         self.ai_service = ai_service
+        self.memory_service = memory_service
+        self.card_service = card_service
         self.free_analysis_limit = free_analysis_limit
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -100,12 +111,46 @@ class BotHandlers:
                 parse_mode="Markdown",
             )
 
+    async def _save_conversation_memories(self, user_id: int, conversation_history: List[Dict]):
+        """
+        Asynchronously save conversation memories
+        Called when conversation ends or user returns to menu
+        """
+        if not conversation_history or len(conversation_history) < 2:
+            return
+
+        try:
+            # Extract and save memories in background
+            await self.memory_service.extract_and_save_from_conversation(
+                user_id=user_id,
+                conversation=conversation_history,
+                ai_service=self.ai_service,
+            )
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error saving memories: {e}")
+
     async def main_menu_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle main menu button callbacks"""
         query = update.callback_query
         await query.answer()
 
         if query.data == "back_to_menu":
+            # Save memories before returning to menu (Phase 2)
+            conversation_history = context.user_data.get("conversation_history", [])
+            if conversation_history:
+                telegram_user = update.effective_user
+                # Save memories asynchronously (don't wait)
+                asyncio.create_task(self._save_conversation_memories(
+                    user_id=telegram_user.id,
+                    conversation_history=conversation_history
+                ))
+
+            # Clear conversation context
+            context.user_data.pop("conversation_mode", None)
+            context.user_data.pop("conversation_history", None)
+
             await query.edit_message_text("Чем могу помочь?", reply_markup=kb.get_main_menu_keyboard(),
             parse_mode=ParseMode.HTML,
         )
@@ -268,16 +313,25 @@ class BotHandlers:
         elif conversation_mode == "panic_talk":
             # In panic talk mode - use AI to provide empathetic response
             conversation_history = context.user_data.get("conversation_history", [])
+            telegram_user = update.effective_user
 
             # Add user message to history
             conversation_history.append({"role": "user", "content": text})
 
             try:
+                # Recall relevant memories (Phase 2)
+                memories = await self.memory_service.recall_memories(
+                    user_id=telegram_user.id,
+                    query=text,
+                    n_results=3,
+                )
+                memory_context = self.memory_service.format_memories_for_context(memories) if memories else ""
+
                 # Get AI response
                 response = await self.ai_service.chat(
                     user_message=text,
                     conversation_history=conversation_history[:-1],  # Exclude current message
-                    context="Пользователь в режиме 'паника' - нужна эмоциональная поддержка, валидация чувств и короткий эмпатичный ответ (2-3 предложения). Не давай советов, просто поддержи."
+                    context=f"Пользователь в режиме 'паника' - нужна эмоциональная поддержка, валидация чувств и короткий эмпатичный ответ (2-3 предложения). Не давай советов, просто поддержи.\n\n{memory_context}"
                 )
 
                 # Add AI response to history
@@ -290,6 +344,8 @@ class BotHandlers:
                 try:
                     has_insight = await self.ai_service.detect_insight(text)
                     if has_insight:
+                        # Save insight text for card generation (Phase 2)
+                        context.user_data["last_insight_text"] = text
                         await asyncio.sleep(1)
                         await update.message.reply_text(
                             msg.INSIGHT_DETECTED + "\n\n" + msg.INSIGHT_SHARE_OFFER,
@@ -313,16 +369,25 @@ class BotHandlers:
         elif conversation_mode == "thinking_dialogue":
             # User is in thinking dialogue (Socratic method) - use AI
             conversation_history = context.user_data.get("conversation_history", [])
+            telegram_user = update.effective_user
 
             # Add user message to history
             conversation_history.append({"role": "user", "content": text})
 
             try:
+                # Recall relevant memories (Phase 2)
+                memories = await self.memory_service.recall_memories(
+                    user_id=telegram_user.id,
+                    query=text,
+                    n_results=3,
+                )
+                memory_context = self.memory_service.format_memories_for_context(memories) if memories else ""
+
                 # Get AI response with Socratic method
                 response = await self.ai_service.chat(
                     user_message=text,
                     conversation_history=conversation_history[:-1],  # Exclude current message
-                    context="Продолжай задавать короткие наводящие вопросы (1-2 предложения). Помоги пользователю самостоятельно прийти к решению. Не давай прямых советов."
+                    context=f"Продолжай задавать короткие наводящие вопросы (1-2 предложения). Помоги пользователю самостоятельно прийти к решению. Не давай прямых советов.\n\n{memory_context}"
                 )
 
                 # Add AI response to history
@@ -335,6 +400,8 @@ class BotHandlers:
                 try:
                     has_insight = await self.ai_service.detect_insight(text)
                     if has_insight:
+                        # Save insight text for card generation (Phase 2)
+                        context.user_data["last_insight_text"] = text
                         await asyncio.sleep(1)
                         await update.message.reply_text(
                             msg.INSIGHT_DETECTED + "\n\n" + msg.INSIGHT_SHARE_OFFER,
@@ -359,16 +426,25 @@ class BotHandlers:
             # User is writing in journal - provide supportive response
             conversation_history = context.user_data.get("conversation_history", [])
             journal_entry_count = context.user_data.get("journal_entry_count", 0)
+            telegram_user = update.effective_user
 
             # Add user message to history
             conversation_history.append({"role": "user", "content": text})
 
             try:
+                # Recall relevant memories (Phase 2)
+                memories = await self.memory_service.recall_memories(
+                    user_id=telegram_user.id,
+                    query=text,
+                    n_results=3,
+                )
+                memory_context = self.memory_service.format_memories_for_context(memories) if memories else ""
+
                 # Get supportive AI response
                 response = await self.ai_service.chat(
                     user_message=text,
                     conversation_history=conversation_history[:-1],
-                    context="Пользователь ведёт личный дневник. Дай короткий (2-3 предложения) эмпатичный ответ. Можешь задать мягкий вопрос для саморефлексии, но не настаивай. Подчеркни важность того, что она делает."
+                    context=f"Пользователь ведёт личный дневник. Дай короткий (2-3 предложения) эмпатичный ответ. Можешь задать мягкий вопрос для саморефлексии, но не настаивай. Подчеркни важность того, что она делает.\n\n{memory_context}"
                 )
 
                 # Add AI response to history
@@ -600,6 +676,66 @@ _Функция оплаты появится в следующей версии
         await query.edit_message_text(about_text, reply_markup=kb.get_back_to_menu_keyboard(),
             parse_mode="Markdown",
         )
+
+    async def create_card_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle create insight card request (Phase 2)"""
+        query = update.callback_query
+        await query.answer("Создаю карточку... ✨")
+
+        telegram_user = update.effective_user
+
+        try:
+            # Get the insight text from context
+            insight_text = context.user_data.get("last_insight_text", "")
+
+            if not insight_text:
+                await query.edit_message_text(
+                    "Упс, не могу найти текст инсайта 😔\n\nПопробуй ещё раз позже.",
+                    reply_markup=kb.get_back_to_menu_keyboard(),
+                    parse_mode=ParseMode.HTML,
+                )
+                return
+
+            # Generate card image
+            card_image = await self.card_service.generate_insight_card(
+                insight_text=insight_text,
+                template="minimalist",
+            )
+
+            if not card_image:
+                await query.edit_message_text(
+                    "Что-то пошло не так при создании карточки 😔\n\nПопробуй позже.",
+                    reply_markup=kb.get_back_to_menu_keyboard(),
+                    parse_mode=ParseMode.HTML,
+                )
+                return
+
+            # Send the card as photo
+            await query.message.reply_photo(
+                photo=card_image,
+                caption="Вот твоя карточка! Сохрани или поделись в Stories 💚",
+                parse_mode=ParseMode.HTML,
+            )
+
+            # Show menu
+            await query.edit_message_text(
+                "Карточка готова! ✨\n\nЧем ещё могу помочь?",
+                reply_markup=kb.get_main_menu_keyboard(),
+                parse_mode=ParseMode.HTML,
+            )
+
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error creating insight card: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+
+            await query.edit_message_text(
+                "Ой, что-то пошло не так 😔\n\nПопробуй позже или выбери другое действие.",
+                reply_markup=kb.get_back_to_menu_keyboard(),
+                parse_mode=ParseMode.HTML,
+            )
 
     async def error_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle errors"""

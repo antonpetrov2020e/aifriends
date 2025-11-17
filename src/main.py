@@ -16,6 +16,8 @@ from .config import settings
 from .database import init_db, get_session
 from .bot.handlers import BotHandlers
 from .services.ai_service import AIService
+from .services.memory_service import MemoryService
+from .services.card_service import CardService
 
 
 # Configure logging
@@ -42,11 +44,21 @@ def main():
         model=settings.llm_model,
     )
 
+    # Initialize Memory service (Phase 2)
+    logger.info("Initializing Memory service...")
+    memory_service = MemoryService(chroma_db_path=settings.chroma_db_path)
+
+    # Initialize Card service (Phase 2)
+    logger.info("Initializing Card service...")
+    card_service = CardService()
+
     # Initialize handlers
     logger.info("Initializing bot handlers...")
     handlers = BotHandlers(
         db_session=db_session,
         ai_service=ai_service,
+        memory_service=memory_service,
+        card_service=card_service,
         free_analysis_limit=settings.free_analysis_per_week,
     )
 
@@ -145,14 +157,9 @@ def main():
         CallbackQueryHandler(handlers.analysis_start, pattern="^back_to_analysis$")
     )
 
-    # Create card callback (Phase 3 placeholder)
+    # Create card callback (Phase 2 - now implemented!)
     application.add_handler(
-        CallbackQueryHandler(
-            lambda u, c: u.callback_query.answer(
-                "Генерация карточек появится в следующей версии! ✨", show_alert=True
-            ),
-            pattern="^create_card$",
-        )
+        CallbackQueryHandler(handlers.create_card_callback, pattern="^create_card$")
     )
 
     # Text message handler (for free-form responses)
