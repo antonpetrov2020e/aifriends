@@ -149,3 +149,29 @@ def get_continue_or_menu_keyboard() -> InlineKeyboardMarkup:
         ],
     ]
     return InlineKeyboardMarkup(keyboard)
+
+
+def get_journal_keyboard() -> InlineKeyboardMarkup:
+    """Journal mode keyboard"""
+    keyboard = [
+        [
+            InlineKeyboardButton("✍️ Продолжить писать", callback_data="journal_continue"),
+        ],
+        [
+            InlineKeyboardButton("✅ Достаточно на сегодня", callback_data="back_to_menu"),
+        ],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_delete_confirm_keyboard() -> InlineKeyboardMarkup:
+    """Confirm deletion keyboard"""
+    keyboard = [
+        [
+            InlineKeyboardButton("❌ Да, удалить всё", callback_data="confirm_delete"),
+        ],
+        [
+            InlineKeyboardButton("« Отмена", callback_data="settings"),
+        ],
+    ]
+    return InlineKeyboardMarkup(keyboard)

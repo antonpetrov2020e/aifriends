@@ -87,6 +87,28 @@ class UserService:
             print(f"Error deleting user history: {e}")
             return False
 
+    def delete_user_data(self, user: User) -> bool:
+        """Delete user's conversations and memories, but keep the account"""
+        try:
+            # Delete all conversations (cascades to messages)
+            for conversation in user.conversations:
+                self.db.delete(conversation)
+
+            # Delete all memories
+            for memory in user.memories:
+                self.db.delete(memory)
+
+            # Reset usage counters
+            user.analyses_this_week = 0
+            user.last_analysis_reset = datetime.utcnow()
+
+            self.db.commit()
+            return True
+        except Exception as e:
+            self.db.rollback()
+            print(f"Error deleting user data: {e}")
+            return False
+
     def is_premium(self, user: User) -> bool:
         """Check if user has active premium subscription"""
         if not user.is_premium:
