@@ -4,6 +4,7 @@ Implements Phase 1: Foundation (Onboarding, Panic, Structured Analysis)
 """
 import asyncio
 from telegram import Update
+from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 from sqlalchemy.orm import Session
 
@@ -36,25 +37,23 @@ class BotHandlers:
 
         # If user already completed onboarding, show main menu
         if user.onboarding_completed:
-            await update.message.reply_text(
-                "С возвращением! 👋\n\nЧем могу помочь?",
-                reply_markup=kb.get_main_menu_keyboard(),
-            )
+            await update.message.reply_text("С возвращением! 👋\n\nЧем могу помочь?", reply_markup=kb.get_main_menu_keyboard(),
+            parse_mode=ParseMode.HTML,
+        )
             return
 
         # Start onboarding sequence
         # Step 1: Welcome
-        await update.message.reply_text(msg.WELCOME_MESSAGE)
+        await update.message.reply_text(msg.WELCOME_MESSAGE, parse_mode=ParseMode.HTML)
         await asyncio.sleep(1.5)
 
         # Step 2: Ethical boundaries
-        await update.message.reply_text(msg.ETHICAL_BOUNDARIES)
+        await update.message.reply_text(msg.ETHICAL_BOUNDARIES, parse_mode=ParseMode.HTML)
         await asyncio.sleep(2)
 
         # Step 3: Privacy and consent
-        await update.message.reply_text(
-            msg.PRIVACY_INTRO + "\n\n" + msg.CONSENT_QUESTION,
-            reply_markup=kb.get_consent_keyboard(),
+        await update.message.reply_text(msg.PRIVACY_INTRO + "\n\n" + msg.CONSENT_QUESTION, reply_markup=kb.get_consent_keyboard(),
+            parse_mode=ParseMode.HTML,
         )
 
     async def consent_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -71,10 +70,9 @@ class BotHandlers:
             self.user_service.complete_onboarding(user)
 
             # Show welcome message with main menu
-            await query.edit_message_text(
-                msg.CONSENT_ACCEPTED,
-                reply_markup=kb.get_main_menu_keyboard(),
-            )
+            await query.edit_message_text(msg.CONSENT_ACCEPTED, reply_markup=kb.get_main_menu_keyboard(),
+            parse_mode=ParseMode.HTML,
+        )
 
         elif query.data == "privacy_policy":
             # Show privacy policy (placeholder for now)
@@ -98,9 +96,7 @@ class BotHandlers:
 
 [Полная версия: ссылка]"""
 
-            await query.edit_message_text(
-                privacy_text,
-                reply_markup=kb.get_consent_keyboard(),
+            await query.edit_message_text(privacy_text, reply_markup=kb.get_consent_keyboard(),
                 parse_mode="Markdown",
             )
 
@@ -110,10 +106,9 @@ class BotHandlers:
         await query.answer()
 
         if query.data == "back_to_menu":
-            await query.edit_message_text(
-                "Чем могу помочь?",
-                reply_markup=kb.get_main_menu_keyboard(),
-            )
+            await query.edit_message_text("Чем могу помочь?", reply_markup=kb.get_main_menu_keyboard(),
+            parse_mode=ParseMode.HTML,
+        )
 
     async def panic_button(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle Panic button - immediate anxiety relief"""
@@ -121,15 +116,14 @@ class BotHandlers:
         await query.answer()
 
         # Phase 1: Static calming response
-        await query.edit_message_text(msg.PANIC_GREETING)
+        await query.edit_message_text(msg.PANIC_GREETING, parse_mode=ParseMode.HTML)
         await asyncio.sleep(2)
 
-        await query.message.reply_text(msg.PANIC_BREATHING)
+        await query.message.reply_text(msg.PANIC_BREATHING, parse_mode=ParseMode.HTML)
         await asyncio.sleep(6)
 
-        await query.message.reply_text(
-            msg.PANIC_CHECK_IN,
-            reply_markup=kb.get_panic_keyboard(),
+        await query.message.reply_text(msg.PANIC_CHECK_IN, reply_markup=kb.get_panic_keyboard(),
+            parse_mode=ParseMode.HTML,
         )
 
     async def panic_response_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -147,10 +141,9 @@ class BotHandlers:
 
 Ты справилась. Горжусь тобой 💪"""
 
-            await query.edit_message_text(
-                response,
-                reply_markup=kb.get_continue_or_menu_keyboard(),
-            )
+            await query.edit_message_text(response, reply_markup=kb.get_continue_or_menu_keyboard(),
+            parse_mode=ParseMode.HTML,
+        )
 
         elif query.data == "panic_continue":
             # Repeat breathing exercise
@@ -158,12 +151,11 @@ class BotHandlers:
                 "Понимаю. Давай еще раз, медленно 💙",
             )
             await asyncio.sleep(1)
-            await query.message.reply_text(msg.PANIC_BREATHING)
+            await query.message.reply_text(msg.PANIC_BREATHING, parse_mode=ParseMode.HTML)
             await asyncio.sleep(6)
-            await query.message.reply_text(
-                msg.PANIC_CHECK_IN,
-                reply_markup=kb.get_panic_keyboard(),
-            )
+            await query.message.reply_text(msg.PANIC_CHECK_IN, reply_markup=kb.get_panic_keyboard(),
+            parse_mode=ParseMode.HTML,
+        )
 
         elif query.data == "panic_talk":
             # Switch to free-form conversation mode
@@ -192,10 +184,9 @@ class BotHandlers:
                 limit=self.free_analysis_limit,
                 price=990,  # Premium price
             )
-            await query.edit_message_text(
-                limit_msg,
-                reply_markup=kb.get_back_to_menu_keyboard(),
-            )
+            await query.edit_message_text(limit_msg, reply_markup=kb.get_back_to_menu_keyboard(),
+            parse_mode=ParseMode.HTML,
+        )
             return
 
         # Increment counter
@@ -207,9 +198,7 @@ class BotHandlers:
             remaining_text = f"\n\n_Осталось бесплатных разборов на неделю: {remaining - 1}_"
 
         # Start analysis flow
-        await query.edit_message_text(
-            msg.ANALYSIS_INTRO + remaining_text,
-            reply_markup=kb.get_analysis_situation_keyboard(),
+        await query.edit_message_text(msg.ANALYSIS_INTRO + remaining_text, reply_markup=kb.get_analysis_situation_keyboard(),
             parse_mode="Markdown",
         )
 
@@ -232,7 +221,7 @@ class BotHandlers:
         else:  # other
             response = "Расскажи, что случилось? Можешь в свободной форме."
 
-        await query.edit_message_text(response)
+        await query.edit_message_text(response, parse_mode=ParseMode.HTML)
 
         # Set conversation mode to capture text input
         context.user_data["conversation_mode"] = "situation_description"
@@ -246,10 +235,9 @@ class BotHandlers:
 
         if waiting_for == "situation_details":
             # User provided situation details, now ask about feelings
-            await update.message.reply_text(
-                msg.ANALYSIS_FEELINGS_PROMPT,
-                reply_markup=kb.get_feelings_keyboard(),
-            )
+            await update.message.reply_text(msg.ANALYSIS_FEELINGS_PROMPT, reply_markup=kb.get_feelings_keyboard(),
+            parse_mode=ParseMode.HTML,
+        )
             # Clear waiting state
             context.user_data["waiting_for"] = None
 
@@ -271,16 +259,15 @@ class BotHandlers:
             conversation_history.append({"role": "assistant", "content": response})
             context.user_data["conversation_history"] = conversation_history
 
-            await update.message.reply_text(response)
+            await update.message.reply_text(response, parse_mode=ParseMode.HTML)
 
             # Check for insight
             has_insight = await self.ai_service.detect_insight(text)
             if has_insight:
                 await asyncio.sleep(1)
-                await update.message.reply_text(
-                    msg.INSIGHT_DETECTED + "\n\n" + msg.INSIGHT_SHARE_OFFER,
-                    reply_markup=kb.get_insight_share_keyboard(),
-                )
+                await update.message.reply_text(msg.INSIGHT_DETECTED + "\n\n" + msg.INSIGHT_SHARE_OFFER, reply_markup=kb.get_insight_share_keyboard(),
+            parse_mode=ParseMode.HTML,
+        )
 
         elif conversation_mode == "thinking_dialogue":
             # User is in thinking dialogue (Socratic method) - use AI
@@ -305,23 +292,23 @@ class BotHandlers:
             conversation_history.append({"role": "assistant", "content": response})
             context.user_data["conversation_history"] = conversation_history
 
-            await update.message.reply_text(response)
+            await update.message.reply_text(response, parse_mode=ParseMode.HTML)
 
             # Check for insight
             has_insight = await self.ai_service.detect_insight(text)
             if has_insight:
                 await asyncio.sleep(1)
-                await update.message.reply_text(
-                    msg.INSIGHT_DETECTED + "\n\n" + msg.INSIGHT_SHARE_OFFER,
-                    reply_markup=kb.get_insight_share_keyboard(),
-                )
+                await update.message.reply_text(msg.INSIGHT_DETECTED + "\n\n" + msg.INSIGHT_SHARE_OFFER, reply_markup=kb.get_insight_share_keyboard(),
+            parse_mode=ParseMode.HTML,
+        )
 
         else:
             # Default: no active conversation
             await update.message.reply_text(
                 "Не совсем поняла 🤔\n\nВыбери, пожалуйста, что тебе нужно:",
                 reply_markup=kb.get_main_menu_keyboard(),
-            )
+            parse_mode=ParseMode.HTML,
+        )
 
     async def feeling_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle feeling selection and provide AI-powered validation"""
@@ -340,7 +327,7 @@ class BotHandlers:
             context=situation
         )
 
-        await query.edit_message_text(response)
+        await query.edit_message_text(response, parse_mode=ParseMode.HTML)
         await asyncio.sleep(2)
 
         # Start Socratic questioning with AI
@@ -349,7 +336,7 @@ class BotHandlers:
             context=f"Пользователь чувствует {feeling} в ситуации: {situation}. Задай первый наводящий вопрос в стиле Socratic method, чтобы помочь разобраться. Например: 'А что ты сама хочешь сейчас?' или 'Чего ты боишься?'"
         )
 
-        await query.message.reply_text(first_question)
+        await query.message.reply_text(first_question, parse_mode=ParseMode.HTML)
 
         # Initialize conversation history
         context.user_data["conversation_history"] = [
@@ -366,9 +353,7 @@ class BotHandlers:
         await query.answer()
 
         if query.data == "settings":
-            await query.edit_message_text(
-                "⚙️ **Настройки**",
-                reply_markup=kb.get_settings_keyboard(),
+            await query.edit_message_text("⚙️ **Настройки**", reply_markup=kb.get_settings_keyboard(),
                 parse_mode="Markdown",
             )
 
@@ -394,9 +379,7 @@ class BotHandlers:
                 ],
             ]
 
-            await query.edit_message_text(
-                confirm_text,
-                reply_markup=kb.get_settings_keyboard(),
+            await query.edit_message_text(confirm_text, reply_markup=kb.get_settings_keyboard(),
                 parse_mode="Markdown",
             )
 
@@ -414,9 +397,7 @@ class BotHandlers:
 
 _Функция оплаты появится в следующей версии_"""
 
-            await query.edit_message_text(
-                premium_text,
-                reply_markup=kb.get_back_to_menu_keyboard(),
+            await query.edit_message_text(premium_text, reply_markup=kb.get_back_to_menu_keyboard(),
                 parse_mode="Markdown",
             )
 
@@ -442,9 +423,7 @@ _Функция оплаты появится в следующей версии
 Версия: **MVP 1.0 (Phase 1)**
 Разработчик: AI Friends Team"""
 
-        await query.edit_message_text(
-            about_text,
-            reply_markup=kb.get_back_to_menu_keyboard(),
+        await query.edit_message_text(about_text, reply_markup=kb.get_back_to_menu_keyboard(),
             parse_mode="Markdown",
         )
 
@@ -456,4 +435,5 @@ _Функция оплаты появится в следующей версии
             await update.effective_message.reply_text(
                 msg.ERROR_GENERIC,
                 reply_markup=kb.get_back_to_menu_keyboard(),
-            )
+            parse_mode=ParseMode.HTML,
+        )
