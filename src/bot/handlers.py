@@ -146,16 +146,33 @@ class BotHandlers:
         )
 
         elif query.data == "panic_continue":
-            # Repeat breathing exercise
-            await query.edit_message_text(
-                "Понимаю. Давай еще раз, медленно 💙",
+            # Offer alternative calming technique on repeat
+            panic_count = context.user_data.get("panic_repeat_count", 0)
+            context.user_data["panic_repeat_count"] = panic_count + 1
+
+            if panic_count == 0:
+                # Second time - try alternative breathing
+                await query.edit_message_text(
+                    "Давай попробуем другую технику 💙",
+                    parse_mode=ParseMode.HTML,
+                )
+                await asyncio.sleep(1)
+                await query.message.reply_text(msg.PANIC_BREATHING_ALT, parse_mode=ParseMode.HTML)
+            else:
+                # Third+ time - try grounding technique
+                await query.edit_message_text(
+                    "Хорошо, давай попробуем что-то другое 🌿",
+                    parse_mode=ParseMode.HTML,
+                )
+                await asyncio.sleep(1)
+                await query.message.reply_text(msg.PANIC_GROUNDING, parse_mode=ParseMode.HTML)
+
+            await asyncio.sleep(8)
+            await query.message.reply_text(
+                msg.PANIC_CHECK_IN,
+                reply_markup=kb.get_panic_keyboard(),
+                parse_mode=ParseMode.HTML,
             )
-            await asyncio.sleep(1)
-            await query.message.reply_text(msg.PANIC_BREATHING, parse_mode=ParseMode.HTML)
-            await asyncio.sleep(6)
-            await query.message.reply_text(msg.PANIC_CHECK_IN, reply_markup=kb.get_panic_keyboard(),
-            parse_mode=ParseMode.HTML,
-        )
 
         elif query.data == "panic_talk":
             # Switch to free-form conversation mode
