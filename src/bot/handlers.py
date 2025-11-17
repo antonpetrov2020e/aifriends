@@ -253,15 +253,38 @@ class BotHandlers:
         waiting_for = context.user_data.get("waiting_for")
 
         if waiting_for == "situation_details":
-            # User provided situation details, now ask about feelings
+            # User provided situation details - use AI for empathetic response
             # Store situation in context
             context.user_data["current_situation"] = text
 
-            await update.message.reply_text(
-                msg.ANALYSIS_FEELINGS_PROMPT,
-                reply_markup=kb.get_feelings_keyboard(),
-                parse_mode=ParseMode.HTML,
-            )
+            try:
+                # Generate empathetic response with active listening
+                empathetic_response = await self.ai_service.empathetic_first_response(text)
+
+                await update.message.reply_text(
+                    empathetic_response,
+                    parse_mode=ParseMode.HTML,
+                )
+
+                # After empathetic response, ask about feelings
+                await asyncio.sleep(2)
+                await update.message.reply_text(
+                    msg.ANALYSIS_FEELINGS_PROMPT,
+                    reply_markup=kb.get_feelings_keyboard(),
+                    parse_mode=ParseMode.HTML,
+                )
+
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Error in empathetic first response: {e}")
+                # Fallback to direct feelings prompt
+                await update.message.reply_text(
+                    "Я слышу, как это для тебя важно. Давай разберемся глубже.\n\nЧто ты почувствовала в тот момент?",
+                    reply_markup=kb.get_feelings_keyboard(),
+                    parse_mode=ParseMode.HTML,
+                )
+
             # Clear waiting state
             context.user_data["waiting_for"] = None
 
@@ -277,7 +300,7 @@ class BotHandlers:
                 response = await self.ai_service.chat(
                     user_message=text,
                     conversation_history=conversation_history[:-1],  # Exclude current message
-                    context="Пользователь в режиме 'паника' - нужна эмоциональная поддержка, валидация чувств и короткий эмпатичный ответ (2-3 предложения). Не давай советов, просто поддержи."
+                    context="Пользователь в режиме 'паника' - используй АКТИВНОЕ СЛУШАНИЕ: отрази чувства, покажи что слышишь и понимаешь, валидируй эмоции. Пиши 2-4 предложения. НЕ давай советов, НЕ используй шаблоны 'слышу тебя' - будь конкретной к ситуации."
                 )
 
                 # Add AI response to history
@@ -322,7 +345,7 @@ class BotHandlers:
                 response = await self.ai_service.chat(
                     user_message=text,
                     conversation_history=conversation_history[:-1],  # Exclude current message
-                    context="Продолжай задавать короткие наводящие вопросы (1-2 предложения). Помоги пользователю самостоятельно прийти к решению. Не давай прямых советов."
+                    context="Сократический диалог: СНАЧАЛА отрази суть сказанного (активное слушание), ПОТОМ задай ОДИН короткий наводящий вопрос (1-2 предложения) для самостоятельного осознания. Не давай прямых советов."
                 )
 
                 # Add AI response to history
@@ -399,7 +422,7 @@ class BotHandlers:
         first_question = await self.ai_service.chat(
             user_message=f"Ситуация: {situation}\nЯ чувствую: {feeling_name}",
             conversation_history=[],
-            context=f"Пользователь описал ситуацию и выразил чувство. Задай ОДИН короткий (1-2 предложения) наводящий вопрос в стиле Socratic method. Помоги разобраться в её настоящих желаниях, страхах или границах. Не повторяй ситуацию, не давай советов - только вопрос."
+            context=f"Пользователь описал ситуацию и чувство '{feeling_name}'. СНАЧАЛА коротко отрази/валидируй это чувство (1 предложение), ПОТОМ задай ОДИН наводящий вопрос (метод Сократа) чтобы помочь разобраться в настоящих желаниях, страхах или границах. Всего 2-3 предложения."
         )
 
         await query.message.reply_text(first_question, parse_mode=ParseMode.HTML)
