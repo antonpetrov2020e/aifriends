@@ -12,6 +12,7 @@ from . import messages as msg
 from . import keyboards as kb
 from ..services.user_service import UserService
 from ..services.ai_service import AIService
+from ..services.conversation_service import ConversationService
 from ..database.models import User, Conversation, Message
 
 
@@ -21,6 +22,7 @@ class BotHandlers:
     def __init__(self, db_session: Session, ai_service: AIService, free_analysis_limit: int = 3):
         self.db = db_session
         self.user_service = UserService(db_session)
+        self.conversation_service = ConversationService(db_session)
         self.ai_service = ai_service
         self.free_analysis_limit = free_analysis_limit
 
@@ -182,7 +184,13 @@ class BotHandlers:
             )
             # Set context for conversation tracking
             context.user_data["conversation_mode"] = "panic_talk"
-            context.user_data["conversation_history"] = []  # Initialize empty history
+
+            # Get or create conversation in DB
+            conversation = self.conversation_service.get_or_create_conversation(
+                user=user,
+                conversation_type="panic"
+            )
+            context.user_data["conversation_id"] = conversation.id
 
     async def analysis_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Start 'Analysis' flow - check limits first"""
@@ -257,9 +265,34 @@ class BotHandlers:
             # Store situation in context
             context.user_data["current_situation"] = text
 
+            telegram_user = update.effective_user
+            user = self.user_service.get_or_create_user(telegram_id=telegram_user.id)
+
+            # Create or get conversation for analysis
+            conversation = self.conversation_service.get_or_create_conversation(
+                user=user,
+                conversation_type="analysis"
+            )
+            context.user_data["conversation_id"] = conversation.id
+
+            # Save situation description to DB
+            self.conversation_service.save_message(
+                conversation=conversation,
+                role="user",
+                content=text,
+                message_type="situation_description"
+            )
+
             try:
                 # Generate empathetic response with active listening
                 empathetic_response = await self.ai_service.empathetic_first_response(text)
+
+                # Save empathetic response to DB
+                self.conversation_service.save_message(
+                    conversation=conversation,
+                    role="assistant",
+                    content=empathetic_response
+                )
 
                 await update.message.reply_text(
                     empathetic_response,
@@ -279,8 +312,17 @@ class BotHandlers:
                 logger = logging.getLogger(__name__)
                 logger.error(f"Error in empathetic first response: {e}")
                 # Fallback to direct feelings prompt
+                fallback_msg = "Я слышу, как это для тебя важно. Давай разберемся глубже.\n\nЧто ты почувствовала в тот момент?"
+
+                # Save fallback to DB
+                self.conversation_service.save_message(
+                    conversation=conversation,
+                    role="assistant",
+                    content=fallback_msg
+                )
+
                 await update.message.reply_text(
-                    "Я слышу, как это для тебя важно. Давай разберемся глубже.\n\nЧто ты почувствовала в тот момент?",
+                    fallback_msg,
                     reply_markup=kb.get_feelings_keyboard(),
                     parse_mode=ParseMode.HTML,
                 )
@@ -290,22 +332,48 @@ class BotHandlers:
 
         elif conversation_mode == "panic_talk":
             # In panic talk mode - use AI to provide empathetic response
-            conversation_history = context.user_data.get("conversation_history", [])
+            telegram_user = update.effective_user
+            user = self.user_service.get_or_create_user(telegram_id=telegram_user.id)
 
-            # Add user message to history
-            conversation_history.append({"role": "user", "content": text})
+            # Get conversation from DB
+            conversation_id = context.user_data.get("conversation_id")
+            if conversation_id:
+                conversation = self.db.query(Conversation).filter(Conversation.id == conversation_id).first()
+            else:
+                # Fallback: create conversation if not exists
+                conversation = self.conversation_service.get_or_create_conversation(
+                    user=user,
+                    conversation_type="panic"
+                )
+                context.user_data["conversation_id"] = conversation.id
+
+            # Load conversation history from DB
+            conversation_history = self.conversation_service.get_conversation_history(
+                conversation=conversation,
+                limit=20  # Last 20 messages for context
+            )
+
+            # Save user message to DB
+            self.conversation_service.save_message(
+                conversation=conversation,
+                role="user",
+                content=text
+            )
 
             try:
-                # Get AI response
+                # Get AI response (exclude current message from history)
                 response = await self.ai_service.chat(
                     user_message=text,
-                    conversation_history=conversation_history[:-1],  # Exclude current message
+                    conversation_history=conversation_history,  # Already excludes current
                     context="Пользователь в режиме 'паника' - используй АКТИВНОЕ СЛУШАНИЕ: отрази чувства, покажи что слышишь и понимаешь, валидируй эмоции. Пиши 2-4 предложения. НЕ давай советов, НЕ используй шаблоны 'слышу тебя' - будь конкретной к ситуации."
                 )
 
-                # Add AI response to history
-                conversation_history.append({"role": "assistant", "content": response})
-                context.user_data["conversation_history"] = conversation_history
+                # Save AI response to DB
+                self.conversation_service.save_message(
+                    conversation=conversation,
+                    role="assistant",
+                    content=response
+                )
 
                 await update.message.reply_text(response, parse_mode=ParseMode.HTML)
 
@@ -335,22 +403,48 @@ class BotHandlers:
 
         elif conversation_mode == "thinking_dialogue":
             # User is in thinking dialogue (Socratic method) - use AI
-            conversation_history = context.user_data.get("conversation_history", [])
+            telegram_user = update.effective_user
+            user = self.user_service.get_or_create_user(telegram_id=telegram_user.id)
 
-            # Add user message to history
-            conversation_history.append({"role": "user", "content": text})
+            # Get conversation from DB
+            conversation_id = context.user_data.get("conversation_id")
+            if conversation_id:
+                conversation = self.db.query(Conversation).filter(Conversation.id == conversation_id).first()
+            else:
+                # Fallback: create conversation if not exists
+                conversation = self.conversation_service.get_or_create_conversation(
+                    user=user,
+                    conversation_type="analysis"
+                )
+                context.user_data["conversation_id"] = conversation.id
+
+            # Load conversation history from DB
+            conversation_history = self.conversation_service.get_conversation_history(
+                conversation=conversation,
+                limit=20  # Last 20 messages for context
+            )
+
+            # Save user message to DB
+            self.conversation_service.save_message(
+                conversation=conversation,
+                role="user",
+                content=text
+            )
 
             try:
                 # Get AI response with Socratic method
                 response = await self.ai_service.chat(
                     user_message=text,
-                    conversation_history=conversation_history[:-1],  # Exclude current message
+                    conversation_history=conversation_history,  # Already excludes current
                     context="Сократический диалог: СНАЧАЛА отрази суть сказанного (активное слушание), ПОТОМ задай ОДИН короткий наводящий вопрос (1-2 предложения) для самостоятельного осознания. Не давай прямых советов."
                 )
 
-                # Add AI response to history
-                conversation_history.append({"role": "assistant", "content": response})
-                context.user_data["conversation_history"] = conversation_history
+                # Save AI response to DB
+                self.conversation_service.save_message(
+                    conversation=conversation,
+                    role="assistant",
+                    content=response
+                )
 
                 await update.message.reply_text(response, parse_mode=ParseMode.HTML)
 
@@ -379,17 +473,89 @@ class BotHandlers:
                 )
 
         else:
-            # Default: no active conversation
-            await update.message.reply_text(
-                "Не совсем поняла 🤔\n\nВыбери, пожалуйста, что тебе нужно:",
-                reply_markup=kb.get_main_menu_keyboard(),
-                parse_mode=ParseMode.HTML,
+            # Default: free-form message outside structured flow
+            # Load conversation history and respond with context
+            telegram_user = update.effective_user
+            user = self.user_service.get_or_create_user(telegram_id=telegram_user.id)
+
+            # Try to get most recent active conversation
+            conversation = (
+                self.db.query(Conversation)
+                .filter(
+                    Conversation.user_id == user.id,
+                    Conversation.ended_at.is_(None)
+                )
+                .order_by(Conversation.started_at.desc())
+                .first()
             )
+
+            if not conversation:
+                # Create new general conversation
+                conversation = self.conversation_service.get_or_create_conversation(
+                    user=user,
+                    conversation_type="general"
+                )
+                context.user_data["conversation_id"] = conversation.id
+                context.user_data["conversation_mode"] = "general"
+
+            # Load full conversation history from DB
+            conversation_history = self.conversation_service.get_conversation_history(
+                conversation=conversation,
+                limit=30  # Last 30 messages for context
+            )
+
+            # Save user message to DB
+            self.conversation_service.save_message(
+                conversation=conversation,
+                role="user",
+                content=text
+            )
+
+            try:
+                # Get summary of recent topics for better context
+                recent_summary = self.conversation_service.get_recent_conversations_summary(
+                    user=user,
+                    days=7,
+                    limit=3
+                )
+
+                context_prompt = "Свободное общение. Используй АКТИВНОЕ СЛУШАНИЕ."
+                if recent_summary:
+                    context_prompt += f"\n\nКраткая история последних разговоров:\n{recent_summary}"
+
+                # Get AI response with full history
+                response = await self.ai_service.chat(
+                    user_message=text,
+                    conversation_history=conversation_history,
+                    context=context_prompt
+                )
+
+                # Save AI response to DB
+                self.conversation_service.save_message(
+                    conversation=conversation,
+                    role="assistant",
+                    content=response
+                )
+
+                await update.message.reply_text(response, parse_mode=ParseMode.HTML)
+
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Error in general conversation: {e}")
+                await update.message.reply_text(
+                    "Не совсем поняла 🤔\n\nВыбери, пожалуйста, что тебе нужно:",
+                    reply_markup=kb.get_main_menu_keyboard(),
+                    parse_mode=ParseMode.HTML,
+                )
 
     async def feeling_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle feeling selection and provide validation"""
         query = update.callback_query
         await query.answer()
+
+        telegram_user = update.effective_user
+        user = self.user_service.get_or_create_user(telegram_id=telegram_user.id)
 
         feeling = query.data.replace("feeling_", "")
         context.user_data["current_feeling"] = feeling
@@ -410,6 +576,13 @@ class BotHandlers:
         await query.edit_message_text(response, parse_mode=ParseMode.HTML)
         await asyncio.sleep(2)
 
+        # Create conversation in DB for analysis
+        conversation = self.conversation_service.get_or_create_conversation(
+            user=user,
+            conversation_type="analysis"
+        )
+        context.user_data["conversation_id"] = conversation.id
+
         # Start Socratic questioning with AI
         feeling_names = {
             "anger": "злость",
@@ -419,19 +592,29 @@ class BotHandlers:
         }
         feeling_name = feeling_names.get(feeling, feeling)
 
+        # Save initial context to conversation
+        initial_context = f"Ситуация: {situation}\nЯ чувствую: {feeling_name}"
+        self.conversation_service.save_message(
+            conversation=conversation,
+            role="user",
+            content=initial_context,
+            message_type="context"
+        )
+
         first_question = await self.ai_service.chat(
-            user_message=f"Ситуация: {situation}\nЯ чувствую: {feeling_name}",
+            user_message=initial_context,
             conversation_history=[],
             context=f"Пользователь описал ситуацию и чувство '{feeling_name}'. СНАЧАЛА коротко отрази/валидируй это чувство (1 предложение), ПОТОМ задай ОДИН наводящий вопрос (метод Сократа) чтобы помочь разобраться в настоящих желаниях, страхах или границах. Всего 2-3 предложения."
         )
 
-        await query.message.reply_text(first_question, parse_mode=ParseMode.HTML)
+        # Save first question to DB
+        self.conversation_service.save_message(
+            conversation=conversation,
+            role="assistant",
+            content=first_question
+        )
 
-        # Initialize conversation history
-        context.user_data["conversation_history"] = [
-            {"role": "user", "content": f"Ситуация: {situation}\nЯ чувствую: {feeling_name}"},
-            {"role": "assistant", "content": first_question}
-        ]
+        await query.message.reply_text(first_question, parse_mode=ParseMode.HTML)
 
         # Set conversation mode for thinking dialogue
         context.user_data["conversation_mode"] = "thinking_dialogue"
