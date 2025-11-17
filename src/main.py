@@ -52,7 +52,17 @@ def main():
 
     # Create application
     logger.info("Creating Telegram application...")
-    application = Application.builder().token(settings.telegram_bot_token).build()
+    app_builder = Application.builder().token(settings.telegram_bot_token)
+
+    # Configure proxy if enabled
+    if settings.proxy_enabled and settings.proxy_url:
+        logger.info(f"Using proxy: {settings.proxy_url.split('@')[1] if '@' in settings.proxy_url else settings.proxy_url}")
+        # Configure proxy for httpx (used by python-telegram-bot)
+        import httpx
+        proxy_config = httpx.Proxy(settings.proxy_url)
+        app_builder = app_builder.proxy(proxy_config)
+
+    application = app_builder.build()
 
     # Register command handlers
     application.add_handler(CommandHandler("start", handlers.start_command))

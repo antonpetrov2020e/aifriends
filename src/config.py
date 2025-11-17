@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     # Telegram
     telegram_bot_token: str = Field(..., alias="TELEGRAM_BOT_TOKEN")
 
+    # Proxy (for accessing Telegram API if blocked)
+    proxy_enabled: bool = Field(default=False, alias="PROXY_ENABLED")
+    proxy_url: str = Field(default="", alias="PROXY_URL")
+
     # AI/LLM
     # OpenRouter (primary provider)
     openrouter_api_key: str = Field(..., alias="OPENROUTER_API_KEY")
