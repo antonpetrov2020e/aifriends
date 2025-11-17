@@ -116,14 +116,20 @@ def main():
         CallbackQueryHandler(handlers.about_callback, pattern="^about$")
     )
 
-    # Journal callback (placeholder for Phase 2)
+    # Journal callbacks
     application.add_handler(
-        CallbackQueryHandler(
-            lambda u, c: u.callback_query.answer(
-                "Дневник появится в следующей версии! 📔", show_alert=True
-            ),
-            pattern="^journal$",
-        )
+        CallbackQueryHandler(handlers.journal_start, pattern="^journal$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(handlers.journal_callback, pattern="^journal_")
+    )
+
+    # Delete confirmation callback
+    application.add_handler(
+        CallbackQueryHandler(handlers.settings_callback, pattern="^confirm_delete$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(handlers.settings_callback, pattern="^notifications$")
     )
 
     # Generic continue/skip callbacks
@@ -132,6 +138,21 @@ def main():
     )
     application.add_handler(
         CallbackQueryHandler(handlers.main_menu_callback, pattern="^skip_card$")
+    )
+
+    # Back to analysis callback
+    application.add_handler(
+        CallbackQueryHandler(handlers.analysis_start, pattern="^back_to_analysis$")
+    )
+
+    # Create card callback (Phase 3 placeholder)
+    application.add_handler(
+        CallbackQueryHandler(
+            lambda u, c: u.callback_query.answer(
+                "Генерация карточек появится в следующей версии! ✨", show_alert=True
+            ),
+            pattern="^create_card$",
+        )
     )
 
     # Text message handler (for free-form responses)

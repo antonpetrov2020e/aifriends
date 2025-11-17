@@ -355,6 +355,61 @@ class BotHandlers:
                     parse_mode=ParseMode.HTML,
                 )
 
+        elif conversation_mode == "journal":
+            # User is writing in journal - provide supportive response
+            conversation_history = context.user_data.get("conversation_history", [])
+            journal_entry_count = context.user_data.get("journal_entry_count", 0)
+
+            # Add user message to history
+            conversation_history.append({"role": "user", "content": text})
+
+            try:
+                # Get supportive AI response
+                response = await self.ai_service.chat(
+                    user_message=text,
+                    conversation_history=conversation_history[:-1],
+                    context="Пользователь ведёт личный дневник. Дай короткий (2-3 предложения) эмпатичный ответ. Можешь задать мягкий вопрос для саморефлексии, но не настаивай. Подчеркни важность того, что она делает."
+                )
+
+                # Add AI response to history
+                conversation_history.append({"role": "assistant", "content": response})
+                context.user_data["conversation_history"] = conversation_history
+                context.user_data["journal_entry_count"] = journal_entry_count + 1
+
+                await update.message.reply_text(response, parse_mode=ParseMode.HTML)
+
+                # After 2-3 entries, offer to finish or continue
+                if journal_entry_count >= 2:
+                    await asyncio.sleep(1)
+                    await update.message.reply_text(
+                        msg.JOURNAL_FOLLOW_UP,
+                        reply_markup=kb.get_journal_keyboard(),
+                        parse_mode=ParseMode.HTML,
+                    )
+
+                # Check for insight
+                try:
+                    has_insight = await self.ai_service.detect_insight(text)
+                    if has_insight:
+                        await asyncio.sleep(1)
+                        await update.message.reply_text(
+                            msg.INSIGHT_DETECTED + "\n\n" + msg.INSIGHT_SHARE_OFFER,
+                            reply_markup=kb.get_insight_share_keyboard(),
+                            parse_mode=ParseMode.HTML,
+                        )
+                except:
+                    pass  # Silently ignore insight detection errors
+
+            except Exception as e:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Error in journal mode: {e}")
+                await update.message.reply_text(
+                    "Ой, что-то у меня сбой 😔\n\nПродолжай писать, если хочешь, или можем вернуться к меню.",
+                    reply_markup=kb.get_journal_keyboard(),
+                    parse_mode=ParseMode.HTML,
+                )
+
         else:
             # Default: no active conversation
             await update.message.reply_text(
@@ -380,6 +435,7 @@ class BotHandlers:
             "hurt": msg.FEELING_HURT,
             "anxiety": msg.FEELING_ANXIETY,
             "confusion": msg.FEELING_CONFUSION,
+            "unknown": msg.FEELING_UNKNOWN,
         }
 
         response = feeling_messages.get(feeling, msg.FEELING_CONFUSION)
@@ -393,6 +449,7 @@ class BotHandlers:
             "hurt": "обиду",
             "anxiety": "тревогу",
             "confusion": "растерянность",
+            "unknown": "смешанные чувства, которые сложно определить",
         }
         feeling_name = feeling_names.get(feeling, feeling)
 
@@ -413,10 +470,46 @@ class BotHandlers:
         # Set conversation mode for thinking dialogue
         context.user_data["conversation_mode"] = "thinking_dialogue"
 
+    async def journal_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Start journal mode"""
+        query = update.callback_query
+        await query.answer()
+
+        telegram_user = update.effective_user
+        user = self.user_service.get_or_create_user(telegram_id=telegram_user.id)
+
+        # Show journal intro
+        await query.edit_message_text(
+            msg.JOURNAL_INTRO,
+            parse_mode=ParseMode.HTML,
+        )
+
+        # Set conversation mode for journal
+        context.user_data["conversation_mode"] = "journal"
+        context.user_data["conversation_history"] = []
+        context.user_data["journal_entry_count"] = 0
+
+    async def journal_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle journal-related callbacks"""
+        query = update.callback_query
+        await query.answer()
+
+        if query.data == "journal_continue":
+            # User wants to continue writing
+            await query.edit_message_text(
+                msg.JOURNAL_PROMPT_GENERAL,
+                parse_mode=ParseMode.HTML,
+            )
+            # Keep conversation mode active
+            context.user_data["conversation_mode"] = "journal"
+
     async def settings_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle settings menu"""
         query = update.callback_query
         await query.answer()
+
+        telegram_user = update.effective_user
+        user = self.user_service.get_or_create_user(telegram_id=telegram_user.id)
 
         if query.data == "settings":
             await query.edit_message_text("⚙️ **Настройки**", reply_markup=kb.get_settings_keyboard(),
@@ -424,7 +517,7 @@ class BotHandlers:
             )
 
         elif query.data == "delete_history":
-            # Confirm deletion
+            # Show confirmation dialog
             confirm_text = """⚠️ **Удаление истории**
 
 Ты уверена? Это действие нельзя отменить.
@@ -436,18 +529,33 @@ class BotHandlers:
 
 Твой аккаунт останется, но мы начнем с чистого листа."""
 
-            confirm_keyboard = [
-                [
-                    {"text": "❌ Да, удалить всё", "callback_data": "confirm_delete"},
-                ],
-                [
-                    {"text": "« Отмена", "callback_data": "settings"},
-                ],
-            ]
-
-            await query.edit_message_text(confirm_text, reply_markup=kb.get_settings_keyboard(),
+            await query.edit_message_text(confirm_text, reply_markup=kb.get_delete_confirm_keyboard(),
                 parse_mode="Markdown",
             )
+
+        elif query.data == "confirm_delete":
+            # Actually delete the history
+            success = self.user_service.delete_user_data(user)
+
+            if success:
+                # Clear context
+                context.user_data.clear()
+
+                await query.edit_message_text(
+                    "✅ История успешно удалена.\n\nМы начинаем с чистого листа 🌱",
+                    reply_markup=kb.get_back_to_menu_keyboard(),
+                    parse_mode=ParseMode.HTML,
+                )
+            else:
+                await query.edit_message_text(
+                    "❌ Что-то пошло не так. Попробуй позже или напиши в поддержку.",
+                    reply_markup=kb.get_back_to_menu_keyboard(),
+                    parse_mode=ParseMode.HTML,
+                )
+
+        elif query.data == "notifications":
+            # Notifications settings (placeholder for Phase 2)
+            await query.answer("Настройка уведомлений появится в следующей версии!", show_alert=True)
 
         elif query.data == "premium":
             # Show premium features
