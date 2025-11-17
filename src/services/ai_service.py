@@ -102,7 +102,11 @@ class AIService:
             return response.choices[0].message.content.strip()
 
         except Exception as e:
-            logger.error(f"Error calling AI API: {e}")
+            logger.error(f"Error calling AI API: {type(e).__name__}: {e}")
+            logger.error(f"User message: {user_message[:100]}")
+            logger.error(f"Model: {self.model}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return "Ой, что-то у меня сбой 😅 Попробуй ещё раз?"
 
     async def detect_insight(self, text: str) -> bool:
@@ -181,7 +185,9 @@ class AIService:
             return result
 
         except Exception as e:
-            logger.error(f"Error extracting entities: {e}")
+            logger.error(f"Error extracting entities: {type(e).__name__}: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return {
                 "names": [],
                 "emotions": [],
@@ -218,7 +224,10 @@ class AIService:
             return response.choices[0].message.content.strip()
 
         except Exception as e:
-            logger.error(f"Error validating emotion: {e}")
+            logger.error(f"Error validating emotion: {type(e).__name__}: {e}")
+            logger.error(f"Emotion: {emotion}, Context: {context[:100] if context else 'None'}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             # Fallback to predefined messages
             fallbacks = {
                 "anger": "То, что ты злишься — это нормально! Злость — это сигнал, что что-то задело твои границы. 💔",

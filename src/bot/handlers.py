@@ -341,14 +341,16 @@ class BotHandlers:
 
         # Start Socratic questioning with AI
         first_question = await self.ai_service.chat(
-            user_message="",
-            context=f"Пользователь чувствует {feeling} в ситуации: {situation}. Задай первый наводящий вопрос в стиле Socratic method, чтобы помочь разобраться. Например: 'А что ты сама хочешь сейчас?' или 'Чего ты боишься?'"
+            user_message=f"Я чувствую {feeling} в такой ситуации: {situation}",
+            conversation_history=[],
+            context=f"Задай первый наводящий вопрос в стиле Socratic method, чтобы помочь пользователю разобраться в чувствах. Не спрашивай про ситуацию - она уже известна. Спроси про её желания, страхи или намерения."
         )
 
         await query.message.reply_text(first_question, parse_mode=ParseMode.HTML)
 
         # Initialize conversation history
         context.user_data["conversation_history"] = [
+            {"role": "user", "content": f"Я чувствую {feeling} в такой ситуации: {situation}"},
             {"role": "assistant", "content": response},
             {"role": "assistant", "content": first_question}
         ]
