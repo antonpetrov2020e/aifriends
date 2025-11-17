@@ -80,6 +80,20 @@ def main():
     application.add_handler(CommandHandler("start", handlers.start_command))
 
     # Register callback query handlers
+    # Onboarding callbacks (NEW)
+    application.add_handler(
+        CallbackQueryHandler(handlers.onboarding_callback, pattern="^show_features$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(handlers.onboarding_callback, pattern="^skip_to_panic$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(handlers.onboarding_callback, pattern="^skip_onboarding$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(handlers.onboarding_callback, pattern="^first_need_")
+    )
+
     # Consent callbacks
     application.add_handler(
         CallbackQueryHandler(handlers.consent_callback, pattern="^consent_")
@@ -144,22 +158,20 @@ def main():
         CallbackQueryHandler(handlers.settings_callback, pattern="^notifications$")
     )
 
-    # Generic continue/skip callbacks
+    # Navigation callbacks (back_to_analysis, continue_talk)
     application.add_handler(
-        CallbackQueryHandler(handlers.main_menu_callback, pattern="^continue_talk$")
+        CallbackQueryHandler(handlers.navigation_callback, pattern="^back_to_analysis$")
     )
     application.add_handler(
-        CallbackQueryHandler(handlers.main_menu_callback, pattern="^skip_card$")
-    )
-
-    # Back to analysis callback
-    application.add_handler(
-        CallbackQueryHandler(handlers.analysis_start, pattern="^back_to_analysis$")
+        CallbackQueryHandler(handlers.navigation_callback, pattern="^continue_talk$")
     )
 
-    # Create card callback (Phase 2 - now implemented!)
+    # Card callbacks (create_card, skip_card) - Phase 2
     application.add_handler(
-        CallbackQueryHandler(handlers.create_card_callback, pattern="^create_card$")
+        CallbackQueryHandler(handlers.insight_card_callback, pattern="^skip_card$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(handlers.insight_card_callback, pattern="^create_card$")
     )
 
     # Text message handler (for free-form responses)

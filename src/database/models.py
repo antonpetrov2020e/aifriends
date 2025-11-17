@@ -27,6 +27,7 @@ class User(Base):
     telegram_id = Column(Integer, unique=True, nullable=False, index=True)
     username = Column(String(255), nullable=True)
     first_name = Column(String(255), nullable=True)
+    preferred_name = Column(String(255), nullable=True)  # User's chosen name
 
     # Consent and onboarding
     consent_given = Column(Boolean, default=False)

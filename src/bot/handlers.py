@@ -38,7 +38,7 @@ class BotHandlers:
         self.free_analysis_limit = free_analysis_limit
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /start command - Onboarding flow"""
+        """Handle /start command - Improved onboarding flow"""
         telegram_user = update.effective_user
 
         # Get or create user
@@ -48,26 +48,155 @@ class BotHandlers:
             first_name=telegram_user.first_name,
         )
 
-        # If user already completed onboarding, show main menu
+        # If user already completed onboarding, show personalized welcome
         if user.onboarding_completed:
-            await update.message.reply_text("С возвращением! 👋\n\nЧем могу помочь?", reply_markup=kb.get_main_menu_keyboard(),
-            parse_mode=ParseMode.HTML,
-        )
+            display_name = self.user_service.get_display_name(user)
+
+            # Get last conversation for context
+            last_conv = (
+                self.db.query(Conversation)
+                .filter(Conversation.user_id == user.id)
+                .order_by(Conversation.started_at.desc())
+                .first()
+            )
+
+            if last_conv:
+                from datetime import datetime
+                days_ago = (datetime.utcnow() - last_conv.started_at).days
+
+                if days_ago == 0:
+                    greeting = f"С возвращением, {display_name}! 👋\n\nПродолжим?"
+                elif days_ago < 7:
+                    greeting = f"Привет, {display_name}! Прошло {days_ago} дней. Как дела?"
+                else:
+                    greeting = f"Рада видеть, {display_name}! Давно не виделись ({days_ago} дней). Что нового?"
+            else:
+                greeting = f"С возвращением, {display_name}! 👋\n\nЧем могу помочь?"
+
+            await update.message.reply_text(
+                greeting,
+                reply_markup=kb.get_main_menu_keyboard(),
+                parse_mode=ParseMode.HTML,
+            )
             return
 
-        # Start onboarding sequence
+        # NEW ONBOARDING FLOW
         # Step 1: Welcome
         await update.message.reply_text(msg.WELCOME_MESSAGE, parse_mode=ParseMode.HTML)
         await asyncio.sleep(1.5)
 
-        # Step 2: Ethical boundaries
-        await update.message.reply_text(msg.ETHICAL_BOUNDARIES, parse_mode=ParseMode.HTML)
-        await asyncio.sleep(2)
+        # Step 2: Ask for name
+        await update.message.reply_text(msg.ASK_NAME, parse_mode=ParseMode.HTML)
+        context.user_data["waiting_for"] = "name"
 
-        # Step 3: Privacy and consent
-        await update.message.reply_text(msg.PRIVACY_INTRO + "\n\n" + msg.CONSENT_QUESTION, reply_markup=kb.get_consent_keyboard(),
-            parse_mode=ParseMode.HTML,
-        )
+    async def onboarding_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle onboarding flow callbacks"""
+        query = update.callback_query
+        await query.answer()
+
+        telegram_user = update.effective_user
+        user = self.user_service.get_or_create_user(telegram_id=telegram_user.id)
+        display_name = self.user_service.get_display_name(user)
+
+        if query.data == "show_features":
+            # Show quick feature intro
+            await query.edit_message_text(
+                msg.FEATURES_QUICK_INTRO,
+                parse_mode=ParseMode.HTML,
+            )
+            await asyncio.sleep(2)
+
+            # Then show consent
+            await query.message.reply_text(
+                msg.CONSENT_ACCEPTED,
+                reply_markup=kb.get_consent_keyboard(),
+                parse_mode=ParseMode.HTML,
+            )
+
+        elif query.data == "skip_to_panic":
+            # User needs urgent help - skip to panic mode
+            self.user_service.give_consent(user)  # Implicit consent
+            self.user_service.complete_onboarding(user)
+
+            await query.edit_message_text(
+                f"Хорошо, {display_name}, я здесь 💚\n\nСейчас поможем.",
+                parse_mode=ParseMode.HTML,
+            )
+            await asyncio.sleep(1)
+
+            # Start panic flow
+            await query.message.reply_text(msg.PANIC_GREETING, parse_mode=ParseMode.HTML)
+            await asyncio.sleep(2)
+            await query.message.reply_text(msg.PANIC_BREATHING, parse_mode=ParseMode.HTML)
+            await asyncio.sleep(3)
+            await query.message.reply_text(
+                msg.PANIC_CHECK_IN,
+                reply_markup=kb.get_panic_keyboard(),
+                parse_mode=ParseMode.HTML,
+            )
+
+        elif query.data == "skip_onboarding":
+            # Skip to main menu
+            self.user_service.give_consent(user)  # Implicit consent
+            self.user_service.complete_onboarding(user)
+
+            await query.edit_message_text(
+                f"Отлично, {display_name}! 👌\n\nЧем могу помочь?",
+                reply_markup=kb.get_main_menu_keyboard(),
+                parse_mode=ParseMode.HTML,
+            )
+
+        elif query.data == "first_need_analysis":
+            # User wants to analyze situation
+            await query.edit_message_text(
+                "Окей, давай разбираться 🔍",
+                parse_mode=ParseMode.HTML,
+            )
+            await asyncio.sleep(1)
+            await query.message.reply_text(
+                msg.ANALYSIS_INTRO,
+                reply_markup=kb.get_analysis_situation_keyboard(),
+                parse_mode=ParseMode.HTML,
+            )
+
+        elif query.data == "first_need_panic":
+            # User is anxious
+            await query.edit_message_text(
+                "Понимаю. Давай поможем тебе успокоиться.",
+                parse_mode=ParseMode.HTML,
+            )
+            await asyncio.sleep(1)
+            await query.message.reply_text(msg.PANIC_GREETING, parse_mode=ParseMode.HTML)
+            await asyncio.sleep(2)
+            await query.message.reply_text(msg.PANIC_BREATHING, parse_mode=ParseMode.HTML)
+            await asyncio.sleep(3)
+            await query.message.reply_text(
+                msg.PANIC_CHECK_IN,
+                reply_markup=kb.get_panic_keyboard(),
+                parse_mode=ParseMode.HTML,
+            )
+
+        elif query.data == "first_need_journal":
+            # User wants to journal
+            await query.edit_message_text(
+                "Отлично! Это твое личное пространство 🌿",
+                parse_mode=ParseMode.HTML,
+            )
+            await asyncio.sleep(1)
+            await query.message.reply_text(
+                msg.JOURNAL_INTRO,
+                parse_mode=ParseMode.HTML,
+            )
+            context.user_data["conversation_mode"] = "journal"
+            context.user_data["conversation_history"] = []
+
+        elif query.data == "first_need_explore":
+            # User is just exploring
+            await query.edit_message_text(
+                f"Без проблем, {display_name}! Осматривайся 😊\n\nКогда будешь готова — вот меню:",
+                reply_markup=kb.get_main_menu_keyboard(),
+                parse_mode=ParseMode.HTML,
+            )
 
     async def consent_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle consent button callback"""
@@ -76,16 +205,19 @@ class BotHandlers:
 
         telegram_user = update.effective_user
         user = self.user_service.get_or_create_user(telegram_id=telegram_user.id)
+        display_name = self.user_service.get_display_name(user)
 
         if query.data == "consent_yes":
             # Give consent
             self.user_service.give_consent(user)
             self.user_service.complete_onboarding(user)
 
-            # Show welcome message with main menu
-            await query.edit_message_text(msg.CONSENT_ACCEPTED, reply_markup=kb.get_main_menu_keyboard(),
-            parse_mode=ParseMode.HTML,
-        )
+            # Show personalized completion message with first question
+            await query.edit_message_text(
+                msg.ONBOARDING_COMPLETE.format(name=display_name),
+                reply_markup=kb.get_first_need_keyboard(),
+                parse_mode=ParseMode.HTML,
+            )
 
         elif query.data == "privacy_policy":
             # Show privacy policy (placeholder for now)
@@ -132,6 +264,28 @@ class BotHandlers:
             import logging
             logger = logging.getLogger(__name__)
             logger.error(f"Error saving memories: {e}")
+
+    async def navigation_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle navigation callbacks (back_to_analysis, continue_talk, etc.)"""
+        query = update.callback_query
+        await query.answer()
+
+        if query.data == "back_to_analysis":
+            # User wants to go back to situation selection
+            await query.edit_message_text(
+                "Хорошо, давай выберем заново.\n\nЧто случилось?",
+                reply_markup=kb.get_analysis_situation_keyboard(),
+                parse_mode=ParseMode.HTML,
+            )
+
+        elif query.data == "continue_talk":
+            # User wants to continue conversation
+            await query.edit_message_text(
+                "Я слушаю 👂\n\nПиши всё, что хочешь.",
+                parse_mode=ParseMode.HTML,
+            )
+            # Keep current conversation mode active
+            # (it's already set in context.user_data)
 
     async def main_menu_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle main menu button callbacks"""
@@ -305,7 +459,26 @@ class BotHandlers:
         conversation_mode = context.user_data.get("conversation_mode")
         waiting_for = context.user_data.get("waiting_for")
 
-        if waiting_for == "situation_details":
+        if waiting_for == "name":
+            # User provided their name during onboarding
+            telegram_user = update.effective_user
+            user = self.user_service.get_or_create_user(telegram_id=telegram_user.id)
+
+            # Save preferred name
+            self.user_service.set_preferred_name(user, text.strip())
+
+            # Send personalized greeting
+            await update.message.reply_text(
+                msg.NICE_TO_MEET.format(name=text.strip()),
+                reply_markup=kb.get_show_features_keyboard(),
+                parse_mode=ParseMode.HTML,
+            )
+
+            # Clear waiting state
+            context.user_data["waiting_for"] = None
+            return
+
+        elif waiting_for == "situation_details":
             # User provided situation details - use AI for empathetic response
             # Store situation in context
             context.user_data["current_situation"] = text
@@ -379,6 +552,7 @@ class BotHandlers:
             # In panic talk mode - use AI to provide empathetic response
             conversation_history = context.user_data.get("conversation_history", [])
             telegram_user = update.effective_user
+            user = self.user_service.get_or_create_user(telegram_id=telegram_user.id)
 
             # Get conversation from DB
             conversation_id = context.user_data.get("conversation_id")
@@ -460,6 +634,7 @@ class BotHandlers:
             # User is in thinking dialogue (Socratic method) - use AI
             conversation_history = context.user_data.get("conversation_history", [])
             telegram_user = update.effective_user
+            user = self.user_service.get_or_create_user(telegram_id=telegram_user.id)
 
             # Get conversation from DB
             conversation_id = context.user_data.get("conversation_id")
@@ -880,6 +1055,22 @@ _Функция оплаты появится в следующей версии
         await query.edit_message_text(about_text, reply_markup=kb.get_back_to_menu_keyboard(),
             parse_mode="Markdown",
         )
+
+    async def insight_card_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle insight card actions (create or skip)"""
+        query = update.callback_query
+
+        if query.data == "skip_card":
+            await query.answer()
+            await query.edit_message_text(
+                "Без проблем! 😊\n\nЧем ещё могу помочь?",
+                reply_markup=kb.get_main_menu_keyboard(),
+                parse_mode=ParseMode.HTML,
+            )
+            return
+
+        # Handle create_card (existing logic)
+        await self.create_card_callback(update, context)
 
     async def create_card_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle create insight card request (Phase 2)"""

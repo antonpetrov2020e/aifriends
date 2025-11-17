@@ -4,14 +4,49 @@ Telegram keyboard layouts for bot navigation
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 
 
+def get_show_features_keyboard() -> InlineKeyboardMarkup:
+    """Keyboard for choosing to see features or skip"""
+    keyboard = [
+        [
+            InlineKeyboardButton("👀 Да, покажи быстро", callback_data="show_features"),
+        ],
+        [
+            InlineKeyboardButton("😱 Мне срочно нужна помощь!", callback_data="skip_to_panic"),
+        ],
+        [
+            InlineKeyboardButton("🤷‍♀️ Сразу к главному меню", callback_data="skip_onboarding"),
+        ],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
 def get_consent_keyboard() -> InlineKeyboardMarkup:
     """Keyboard for privacy consent"""
     keyboard = [
         [
-            InlineKeyboardButton("✅ Согласна, погнали!", callback_data="consent_yes"),
+            InlineKeyboardButton("✅ Да, согласна", callback_data="consent_yes"),
         ],
         [
-            InlineKeyboardButton("📄 Сначала почитать политику", callback_data="privacy_policy"),
+            InlineKeyboardButton("📄 Почитать политику", callback_data="privacy_policy"),
+        ],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_first_need_keyboard() -> InlineKeyboardMarkup:
+    """Keyboard for first interaction after onboarding"""
+    keyboard = [
+        [
+            InlineKeyboardButton("🕵️‍♀️ Хочу разобраться в ситуации", callback_data="first_need_analysis"),
+        ],
+        [
+            InlineKeyboardButton("😱 Мне тревожно/паника", callback_data="first_need_panic"),
+        ],
+        [
+            InlineKeyboardButton("🧘‍♀️ Хочу просто записать мысли", callback_data="first_need_journal"),
+        ],
+        [
+            InlineKeyboardButton("🤷‍♀️ Просто смотрю, что тут", callback_data="first_need_explore"),
         ],
     ]
     return InlineKeyboardMarkup(keyboard)

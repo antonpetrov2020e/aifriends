@@ -45,6 +45,17 @@ class UserService:
         self.db.refresh(user)
         return user
 
+    def set_preferred_name(self, user: User, preferred_name: str) -> User:
+        """Set user's preferred name"""
+        user.preferred_name = preferred_name
+        self.db.commit()
+        self.db.refresh(user)
+        return user
+
+    def get_display_name(self, user: User) -> str:
+        """Get user's display name (preferred_name or fallback to first_name)"""
+        return user.preferred_name or user.first_name or "друг"
+
     def check_analysis_limit(self, user: User, free_limit: int = 3) -> tuple[bool, int]:
         """
         Check if user can perform another analysis
