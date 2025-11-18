@@ -53,7 +53,7 @@ def get_first_need_keyboard() -> InlineKeyboardMarkup:
 
 
 def get_main_menu_keyboard() -> InlineKeyboardMarkup:
-    """Main menu with core features"""
+    """Main menu with core features (updated for Phase 3)"""
     keyboard = [
         [
             InlineKeyboardButton("😱 Паника!", callback_data="panic"),
@@ -62,7 +62,11 @@ def get_main_menu_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("🕵️‍♀️ Разбор полетов", callback_data="analysis_start"),
         ],
         [
-            InlineKeyboardButton("🧘‍♀️ Фокус на себя", callback_data="journal"),
+            InlineKeyboardButton("🧘‍♀️ Дневник мыслей", callback_data="journal"),
+        ],
+        [
+            InlineKeyboardButton("🙏 Благодарность", callback_data="gratitude"),
+            InlineKeyboardButton("📊 Настроение", callback_data="mood_track"),
         ],
         [
             InlineKeyboardButton("ℹ️ О боте", callback_data="about"),
@@ -207,6 +211,117 @@ def get_delete_confirm_keyboard() -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton("« Отмена", callback_data="settings"),
+        ],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+# Phase 3: Premium, Gratitude, Mood keyboards
+
+def get_premium_keyboard() -> InlineKeyboardMarkup:
+    """Premium subscription keyboard"""
+    keyboard = [
+        [
+            InlineKeyboardButton("💳 Оформить Premium (990₽/мес)", callback_data="buy_premium"),
+        ],
+        [
+            InlineKeyboardButton("« Назад", callback_data="settings"),
+        ],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_premium_active_keyboard() -> InlineKeyboardMarkup:
+    """Premium active status keyboard"""
+    keyboard = [
+        [
+            InlineKeyboardButton("🔄 Продлить Premium", callback_data="buy_premium"),
+        ],
+        [
+            InlineKeyboardButton("❌ Отменить подписку", callback_data="cancel_premium"),
+        ],
+        [
+            InlineKeyboardButton("« Назад", callback_data="settings"),
+        ],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_payment_keyboard(payment_url: str) -> InlineKeyboardMarkup:
+    """Payment URL keyboard"""
+    keyboard = [
+        [
+            InlineKeyboardButton("💳 Перейти к оплате", url=payment_url),
+        ],
+        [
+            InlineKeyboardButton("« Отмена", callback_data="back_to_menu"),
+        ],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_gratitude_menu_keyboard() -> InlineKeyboardMarkup:
+    """Gratitude journal menu"""
+    keyboard = [
+        [
+            InlineKeyboardButton("🙏 Записать благодарность", callback_data="gratitude_new"),
+        ],
+        [
+            InlineKeyboardButton("📜 История благодарностей", callback_data="gratitude_history"),
+        ],
+        [
+            InlineKeyboardButton("📊 Итоги недели", callback_data="gratitude_week_summary"),
+        ],
+        [
+            InlineKeyboardButton("« Назад в меню", callback_data="back_to_menu"),
+        ],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_gratitude_saved_keyboard() -> InlineKeyboardMarkup:
+    """After saving gratitude"""
+    keyboard = [
+        [
+            InlineKeyboardButton("🙏 Добавить еще", callback_data="gratitude_new"),
+        ],
+        [
+            InlineKeyboardButton("📜 Посмотреть историю", callback_data="gratitude_history"),
+        ],
+        [
+            InlineKeyboardButton("« В меню", callback_data="back_to_menu"),
+        ],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_mood_keyboard() -> InlineKeyboardMarkup:
+    """Mood selection keyboard"""
+    keyboard = [
+        [
+            InlineKeyboardButton("😊 Хорошо", callback_data="mood_3"),
+        ],
+        [
+            InlineKeyboardButton("😐 Нормально", callback_data="mood_2"),
+        ],
+        [
+            InlineKeyboardButton("😔 Плохо", callback_data="mood_1"),
+        ],
+        [
+            InlineKeyboardButton("« Назад", callback_data="back_to_menu"),
+        ],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_mood_saved_keyboard() -> InlineKeyboardMarkup:
+    """After saving mood"""
+    keyboard = [
+        [
+            InlineKeyboardButton("📊 Посмотреть график", callback_data="mood_graph"),
+        ],
+        [
+            InlineKeyboardButton("« В меню", callback_data="back_to_menu"),
         ],
     ]
     return InlineKeyboardMarkup(keyboard)

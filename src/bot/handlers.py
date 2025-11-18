@@ -2,6 +2,7 @@
 Telegram bot handlers for AI Friends bot
 Implements Phase 1: Foundation (Onboarding, Panic, Structured Analysis)
 Phase 2: Memory & Viral Cards
+Phase 3: Monetization (Premium, Gratitude, Mood)
 """
 import asyncio
 from typing import List, Dict
@@ -12,14 +13,15 @@ from sqlalchemy.orm import Session
 
 from . import messages as msg
 from . import keyboards as kb
+from .phase3_handlers import Phase3HandlersMixin
 from ..services.user_service import UserService
 from ..services.ai_service import AIService
 from ..services.conversation_service import ConversationService
 from ..database.models import User, Conversation, Message
 
 
-class BotHandlers:
-    """Main bot handlers class"""
+class BotHandlers(Phase3HandlersMixin):
+    """Main bot handlers class with Phase 3 features"""
 
     def __init__(
         self,
@@ -27,6 +29,8 @@ class BotHandlers:
         ai_service: AIService,
         memory_service,
         card_service,
+        payment_service=None,
+        gratitude_service=None,
         free_analysis_limit: int = 3
     ):
         self.db = db_session
@@ -35,6 +39,8 @@ class BotHandlers:
         self.ai_service = ai_service
         self.memory_service = memory_service
         self.card_service = card_service
+        self.payment_service = payment_service
+        self.gratitude_service = gratitude_service
         self.free_analysis_limit = free_analysis_limit
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -473,6 +479,31 @@ class BotHandlers:
                 reply_markup=kb.get_show_features_keyboard(),
                 parse_mode=ParseMode.HTML,
             )
+
+            # Clear waiting state
+            context.user_data["waiting_for"] = None
+            return
+
+        elif waiting_for == "gratitude":
+            # User provided gratitude entry (Phase 3)
+            telegram_user = update.effective_user
+            user = self.user_service.get_or_create_user(telegram_id=telegram_user.id)
+
+            if self.gratitude_service:
+                # Save gratitude entry
+                self.gratitude_service.save_gratitude(user, text)
+
+                await update.message.reply_text(
+                    msg.GRATITUDE_SAVED,
+                    reply_markup=kb.get_gratitude_saved_keyboard(),
+                    parse_mode=ParseMode.HTML,
+                )
+            else:
+                await update.message.reply_text(
+                    "Функция благодарности временно недоступна.",
+                    reply_markup=kb.get_back_to_menu_keyboard(),
+                    parse_mode=ParseMode.HTML,
+                )
 
             # Clear waiting state
             context.user_data["waiting_for"] = None

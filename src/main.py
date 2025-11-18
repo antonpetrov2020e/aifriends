@@ -18,6 +18,8 @@ from .bot.handlers import BotHandlers
 from .services.ai_service import AIService
 from .services.memory_service import MemoryService
 from .services.card_service import CardService
+from .services.payment_service import PaymentService
+from .services.gratitude_service import GratitudeService
 
 
 # Configure logging
@@ -52,6 +54,22 @@ def main():
     logger.info("Initializing Card service...")
     card_service = CardService()
 
+    # Initialize Payment service (Phase 3)
+    payment_service = None
+    if settings.yookassa_shop_id and settings.yookassa_secret_key:
+        logger.info("Initializing Payment service...")
+        payment_service = PaymentService(
+            db_session=db_session,
+            shop_id=settings.yookassa_shop_id,
+            secret_key=settings.yookassa_secret_key,
+        )
+    else:
+        logger.warning("YooKassa credentials not configured - payment features disabled")
+
+    # Initialize Gratitude service (Phase 3)
+    logger.info("Initializing Gratitude service...")
+    gratitude_service = GratitudeService(db_session=db_session)
+
     # Initialize handlers
     logger.info("Initializing bot handlers...")
     handlers = BotHandlers(
@@ -59,6 +77,8 @@ def main():
         ai_service=ai_service,
         memory_service=memory_service,
         card_service=card_service,
+        payment_service=payment_service,
+        gratitude_service=gratitude_service,
         free_analysis_limit=settings.free_analysis_per_week,
     )
 
@@ -172,6 +192,42 @@ def main():
     )
     application.add_handler(
         CallbackQueryHandler(handlers.insight_card_callback, pattern="^create_card$")
+    )
+
+    # Premium callbacks (Phase 3)
+    application.add_handler(
+        CallbackQueryHandler(handlers.premium_callback, pattern="^premium$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(handlers.buy_premium_callback, pattern="^buy_premium$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(handlers.cancel_premium_callback, pattern="^cancel_premium$")
+    )
+
+    # Gratitude callbacks (Phase 3)
+    application.add_handler(
+        CallbackQueryHandler(handlers.gratitude_callback, pattern="^gratitude$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(handlers.gratitude_new_callback, pattern="^gratitude_new$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(handlers.gratitude_history_callback, pattern="^gratitude_history$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(handlers.gratitude_week_summary_callback, pattern="^gratitude_week_summary$")
+    )
+
+    # Mood tracking callbacks (Phase 3)
+    application.add_handler(
+        CallbackQueryHandler(handlers.mood_track_callback, pattern="^mood_track$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(handlers.mood_save_callback, pattern="^mood_save_")
+    )
+    application.add_handler(
+        CallbackQueryHandler(handlers.mood_graph_callback, pattern="^mood_graph$")
     )
 
     # Text message handler (for free-form responses)
