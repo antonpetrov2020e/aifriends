@@ -193,6 +193,10 @@ def main():
     application.add_handler(
         CallbackQueryHandler(handlers.insight_card_callback, pattern="^create_card$")
     )
+    # Template selection callback (Phase 3)
+    application.add_handler(
+        CallbackQueryHandler(handlers.template_selection_callback, pattern="^template_")
+    )
 
     # Premium callbacks (Phase 3)
     application.add_handler(

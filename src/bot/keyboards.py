@@ -299,13 +299,13 @@ def get_mood_keyboard() -> InlineKeyboardMarkup:
     """Mood selection keyboard"""
     keyboard = [
         [
-            InlineKeyboardButton("😊 Хорошо", callback_data="mood_3"),
+            InlineKeyboardButton("😊 Хорошо", callback_data="mood_save_3"),
         ],
         [
-            InlineKeyboardButton("😐 Нормально", callback_data="mood_2"),
+            InlineKeyboardButton("😐 Нормально", callback_data="mood_save_2"),
         ],
         [
-            InlineKeyboardButton("😔 Плохо", callback_data="mood_1"),
+            InlineKeyboardButton("😔 Плохо", callback_data="mood_save_1"),
         ],
         [
             InlineKeyboardButton("« Назад", callback_data="back_to_menu"),
@@ -324,4 +324,46 @@ def get_mood_saved_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("« В меню", callback_data="back_to_menu"),
         ],
     ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_template_selection_keyboard(is_premium: bool = False) -> InlineKeyboardMarkup:
+    """
+    Card template selection keyboard
+
+    Args:
+        is_premium: Whether user has premium access
+    """
+    keyboard = []
+
+    # Free templates (always available)
+    keyboard.append([
+        InlineKeyboardButton("🤍 Минимализм", callback_data="template_minimalist"),
+    ])
+    keyboard.append([
+        InlineKeyboardButton("💗 Нежный розовый", callback_data="template_pastel_pink"),
+    ])
+    keyboard.append([
+        InlineKeyboardButton("💙 Спокойный синий", callback_data="template_calm_blue"),
+    ])
+    keyboard.append([
+        InlineKeyboardButton("💚 Природный зеленый", callback_data="template_nature_green"),
+    ])
+
+    # Premium templates (only for premium users)
+    if is_premium:
+        keyboard.append([
+            InlineKeyboardButton("⭐ Золотая роскошь", callback_data="template_gold_luxury"),
+        ])
+        keyboard.append([
+            InlineKeyboardButton("⭐ Глубокий фиолетовый", callback_data="template_deep_purple"),
+        ])
+        keyboard.append([
+            InlineKeyboardButton("⭐ Элегантный черный", callback_data="template_elegant_black"),
+        ])
+
+    keyboard.append([
+        InlineKeyboardButton("« Назад", callback_data="skip_card"),
+    ])
+
     return InlineKeyboardMarkup(keyboard)

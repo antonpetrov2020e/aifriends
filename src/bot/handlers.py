@@ -1100,15 +1100,31 @@ _Функция оплаты появится в следующей версии
             )
             return
 
-        # Handle create_card (existing logic)
-        await self.create_card_callback(update, context)
+        # Show template selection (updated for Phase 3)
+        telegram_user = update.effective_user
+        user = self.user_service.get_or_create_user(telegram_id=telegram_user.id)
 
-    async def create_card_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle create insight card request (Phase 2)"""
+        await query.answer()
+
+        premium_hint = ""
+        if not user.is_premium:
+            premium_hint = "\n\n✨ <i>Premium пользователи имеют доступ к 3 дополнительным эксклюзивным шаблонам!</i>"
+
+        await query.edit_message_text(
+            f"Выбери шаблон для своей карточки:{premium_hint}",
+            reply_markup=kb.get_template_selection_keyboard(is_premium=user.is_premium),
+            parse_mode=ParseMode.HTML,
+        )
+
+    async def template_selection_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle template selection for card generation (Phase 3)"""
         query = update.callback_query
         await query.answer("Создаю карточку... ✨")
 
         telegram_user = update.effective_user
+
+        # Extract template from callback data (format: "template_TEMPLATENAME")
+        template = query.data.replace("template_", "")
 
         try:
             # Get the insight text from context
@@ -1122,10 +1138,10 @@ _Функция оплаты появится в следующей версии
                 )
                 return
 
-            # Generate card image
+            # Generate card image with selected template
             card_image = await self.card_service.generate_insight_card(
                 insight_text=insight_text,
-                template="minimalist",
+                template=template,
             )
 
             if not card_image:
@@ -1137,9 +1153,12 @@ _Функция оплаты появится в следующей версии
                 return
 
             # Send the card as photo
+            template_name = self.card_service.TEMPLATES.get(template, {}).get("name", "")
+            caption = f"Вот твоя карточка ({template_name})! Сохрани или поделись в Stories 💚"
+
             await query.message.reply_photo(
                 photo=card_image,
-                caption="Вот твоя карточка! Сохрани или поделись в Stories 💚",
+                caption=caption,
                 parse_mode=ParseMode.HTML,
             )
 
@@ -1162,6 +1181,13 @@ _Функция оплаты появится в следующей версии
                 reply_markup=kb.get_back_to_menu_keyboard(),
                 parse_mode=ParseMode.HTML,
             )
+
+    async def create_card_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        Legacy callback for backward compatibility
+        Now redirects to template selection
+        """
+        await self.insight_card_callback(update, context)
 
     async def error_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle errors"""

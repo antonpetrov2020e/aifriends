@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     # Payment (YooKassa) - Phase 3
     yookassa_shop_id: str = Field(default="", alias="YOOKASSA_SHOP_ID")
     yookassa_secret_key: str = Field(default="", alias="YOOKASSA_SECRET_KEY")
+    webhook_port: int = Field(default=8080, alias="WEBHOOK_PORT")  # Port for YooKassa webhook server
 
     class Config:
         env_file = ".env"

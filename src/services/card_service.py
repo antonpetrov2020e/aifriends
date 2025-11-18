@@ -257,11 +257,36 @@ class CardService:
             logger.error(traceback.format_exc())
             return None
 
-    def get_available_templates(self) -> Dict[str, str]:
-        """Get list of available templates with names"""
+    def get_available_templates(self, is_premium: bool = False) -> Dict[str, str]:
+        """
+        Get list of available templates with names
+
+        Args:
+            is_premium: Whether user has premium subscription
+
+        Returns:
+            Dict of template_key: template_name for available templates
+        """
         return {
             key: config["name"]
             for key, config in self.TEMPLATES.items()
+            if not config["premium"] or is_premium
+        }
+
+    def get_free_templates(self) -> Dict[str, str]:
+        """Get only free templates"""
+        return {
+            key: config["name"]
+            for key, config in self.TEMPLATES.items()
+            if not config["premium"]
+        }
+
+    def get_premium_templates(self) -> Dict[str, str]:
+        """Get only premium templates"""
+        return {
+            key: config["name"]
+            for key, config in self.TEMPLATES.items()
+            if config["premium"]
         }
 
     async def save_card_for_user(
