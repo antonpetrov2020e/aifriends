@@ -18,29 +18,57 @@ class CardService:
 
     # Card templates with colors
     TEMPLATES = {
+        # Free templates
         "minimalist": {
             "bg_color": (255, 245, 240),  # Warm white
             "text_color": (60, 60, 60),    # Dark gray
             "accent_color": (200, 150, 180),  # Soft pink
-            "name": "Минимализм"
+            "name": "Минимализм",
+            "premium": False
         },
         "pastel_pink": {
             "bg_color": (255, 228, 225),  # Misty rose
             "text_color": (100, 60, 80),   # Deep mauve
             "accent_color": (255, 192, 203),  # Pink
-            "name": "Нежный розовый"
+            "name": "Нежный розовый",
+            "premium": False
         },
         "calm_blue": {
             "bg_color": (230, 240, 250),  # Light blue
             "text_color": (50, 70, 100),   # Dark blue
             "accent_color": (135, 170, 210),  # Medium blue
-            "name": "Спокойный синий"
+            "name": "Спокойный синий",
+            "premium": False
         },
         "nature_green": {
             "bg_color": (240, 250, 240),  # Mint cream
             "text_color": (60, 90, 60),    # Forest green
             "accent_color": (150, 200, 150),  # Light green
-            "name": "Природный зеленый"
+            "name": "Природный зеленый",
+            "premium": False
+        },
+
+        # Premium templates (Phase 3)
+        "gold_luxury": {
+            "bg_color": (40, 35, 40),      # Deep charcoal
+            "text_color": (255, 250, 240),  # Ivory
+            "accent_color": (212, 175, 55),  # Gold
+            "name": "Золотая роскошь",
+            "premium": True
+        },
+        "deep_purple": {
+            "bg_color": (60, 40, 80),       # Deep purple
+            "text_color": (240, 230, 255),  # Lavender white
+            "accent_color": (180, 120, 200),  # Light purple
+            "name": "Глубокий фиолетовый",
+            "premium": True
+        },
+        "elegant_black": {
+            "bg_color": (20, 20, 20),       # Almost black
+            "text_color": (240, 240, 240),  # Off white
+            "accent_color": (160, 160, 160),  # Silver gray
+            "name": "Элегантный черный",
+            "premium": True
         },
     }
 

@@ -145,6 +145,75 @@ class InsightCard(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class Payment(Base):
+    """Payment transaction for Premium subscription (Phase 3)"""
+
+    __tablename__ = "payments"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    # Payment details
+    amount = Column(Integer, nullable=False)  # В копейках: 99000 = 990₽
+    currency = Column(String(3), default="RUB")
+    status = Column(String(20), nullable=False)  # pending, succeeded, canceled
+
+    # YooKassa integration
+    payment_id = Column(String(255), unique=True)  # ID платежа в ЮKassa
+    confirmation_url = Column(String(512))  # Ссылка на оплату
+    payment_method = Column(String(50), nullable=True)  # bank_card, yoomoney, etc.
+
+    # Subscription
+    subscription_type = Column(String(20), default="premium")  # premium
+    subscription_period = Column(String(20), default="month")  # month, year
+
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    paid_at = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime, nullable=True)  # Когда истекает подписка
+
+    # Relationships
+    user = relationship("User", backref="payments")
+
+
+class GratitudeEntry(Base):
+    """Gratitude journal entry (Phase 3)"""
+
+    __tablename__ = "gratitude_entries"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    # Content
+    content = Column(Text, nullable=False)
+    tags = Column(String(255), nullable=True)  # Comma-separated: family,health,work
+
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    user = relationship("User", backref="gratitude_entries")
+
+
+class MoodEntry(Base):
+    """Mood tracking (Phase 3)"""
+
+    __tablename__ = "mood_entries"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    # Mood: 1 (😔 плохо), 2 (😐 нормально), 3 (😊 хорошо)
+    mood = Column(Integer, nullable=False)
+    note = Column(Text, nullable=True)  # Optional note about the mood
+
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    user = relationship("User", backref="mood_entries")
+
+
 def init_db(database_url: str):
     """Initialize database with automatic migration support"""
     engine = create_engine(database_url)
