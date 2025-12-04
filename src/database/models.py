@@ -49,6 +49,7 @@ class User(Base):
     # Relationships
     conversations = relationship("Conversation", back_populates="user", cascade="all, delete-orphan")
     memories = relationship("Memory", back_populates="user", cascade="all, delete-orphan")
+    wins = relationship("Win", back_populates="user", cascade="all, delete-orphan")
 
 
 class Conversation(Base):
@@ -143,6 +144,21 @@ class InsightCard(Base):
 
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Win(Base):
+    """'Diary of Wins' entry model (Phase 3)"""
+
+    __tablename__ = "wins"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    user = relationship("User", back_populates="wins")
 
 
 def init_db(database_url: str):

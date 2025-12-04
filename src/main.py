@@ -18,6 +18,7 @@ from .bot.handlers import BotHandlers
 from .services.ai_service import AIService
 from .services.memory_service import MemoryService
 from .services.card_service import CardService
+from .services.payment_service import payment_service
 
 
 # Configure logging
@@ -50,7 +51,7 @@ def main():
 
     # Initialize Card service (Phase 2)
     logger.info("Initializing Card service...")
-    card_service = CardService()
+    card_service = CardService(generated_cards_path=settings.generated_cards_path)
 
     # Initialize handlers
     logger.info("Initializing bot handlers...")
@@ -59,6 +60,7 @@ def main():
         ai_service=ai_service,
         memory_service=memory_service,
         card_service=card_service,
+        payment_service=payment_service,
         free_analysis_limit=settings.free_analysis_per_week,
     )
 
@@ -136,6 +138,9 @@ def main():
     application.add_handler(
         CallbackQueryHandler(handlers.settings_callback, pattern="^premium$")
     )
+    application.add_handler(
+        CallbackQueryHandler(handlers.check_payment_callback, pattern="^check_payment$")
+    )
 
     # About callback
     application.add_handler(
@@ -148,6 +153,14 @@ def main():
     )
     application.add_handler(
         CallbackQueryHandler(handlers.journal_callback, pattern="^journal_")
+    )
+
+    # Diary of Wins callbacks (Phase 3)
+    application.add_handler(
+        CallbackQueryHandler(handlers.wins_callback, pattern="^diary_of_wins$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(handlers.wins_callback, pattern="^add_win$")
     )
 
     # Delete confirmation callback
@@ -171,7 +184,7 @@ def main():
         CallbackQueryHandler(handlers.insight_card_callback, pattern="^skip_card$")
     )
     application.add_handler(
-        CallbackQueryHandler(handlers.insight_card_callback, pattern="^create_card$")
+        CallbackQueryHandler(handlers.insight_card_callback, pattern="^create_card_")
     )
 
     # Text message handler (for free-form responses)

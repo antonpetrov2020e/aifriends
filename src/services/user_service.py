@@ -132,3 +132,24 @@ class UserService:
             return False
 
         return True
+
+    def grant_premium(self, user: User, days: int) -> User:
+        """Grant premium access to a user for a number of days."""
+        user.is_premium = True
+        user.premium_until = datetime.utcnow() + timedelta(days=days)
+        self.db.commit()
+        self.db.refresh(user)
+        return user
+
+    def add_win(self, user: User, content: str):
+        """Adds a 'win' to the user's diary."""
+        from ..database.models import Win
+        new_win = Win(user_id=user.id, content=content)
+        self.db.add(new_win)
+        self.db.commit()
+        return new_win
+
+    def get_wins(self, user: User) -> list:
+        """Retrieves all 'wins' for a user."""
+        from ..database.models import Win
+        return self.db.query(Win).filter(Win.user_id == user.id).order_by(Win.created_at.desc()).all()

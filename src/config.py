@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     # Database
     database_url: str = Field(default="sqlite:///./aifriends.db", alias="DATABASE_URL")
     chroma_db_path: str = Field(default="./chroma_db", alias="CHROMA_DB_PATH")
+    generated_cards_path: str = Field(default="./generated_cards", alias="GENERATED_CARDS_PATH")
 
     # Rate Limiting
     max_messages_per_hour: int = Field(default=50, alias="MAX_MESSAGES_PER_HOUR")
@@ -42,6 +43,8 @@ class Settings(BaseSettings):
 
     # Premium
     premium_price_monthly: int = Field(default=990, alias="PREMIUM_PRICE_MONTHLY")
+    yookassa_shop_id: str = Field(default="", alias="YOOKASSA_SHOP_ID")
+    yookassa_secret_key: str = Field(default="", alias="YOOKASSA_SECRET_KEY")
 
     class Config:
         env_file = ".env"

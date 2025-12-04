@@ -57,11 +57,10 @@ def get_main_menu_keyboard() -> InlineKeyboardMarkup:
     keyboard = [
         [
             InlineKeyboardButton("😱 Паника!", callback_data="panic"),
-        ],
-        [
             InlineKeyboardButton("🕵️‍♀️ Разбор полетов", callback_data="analysis_start"),
         ],
         [
+            InlineKeyboardButton("🏆 Дневник побед", callback_data="diary_of_wins"),
             InlineKeyboardButton("🧘‍♀️ Фокус на себя", callback_data="journal"),
         ],
         [
@@ -135,7 +134,21 @@ def get_insight_share_keyboard() -> InlineKeyboardMarkup:
     """Keyboard for offering to create shareable card"""
     keyboard = [
         [
-            InlineKeyboardButton("✨ Да, сделай картинку!", callback_data="create_card"),
+            InlineKeyboardButton("✨ Да, сделай картинку!", callback_data="create_card_minimalist"),
+        ],
+        [
+            InlineKeyboardButton("🙈 Нет, спасибо", callback_data="skip_card"),
+        ],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_premium_card_keyboard() -> InlineKeyboardMarkup:
+    """Keyboard for offering premium card templates."""
+    keyboard = [
+        [
+            InlineKeyboardButton("Минимализм", callback_data="create_card_minimalist"),
+            InlineKeyboardButton("✨ Градиент", callback_data="create_card_gradient"),
         ],
         [
             InlineKeyboardButton("🙈 Нет, спасибо", callback_data="skip_card"),
@@ -194,6 +207,19 @@ def get_journal_keyboard() -> InlineKeyboardMarkup:
         ],
         [
             InlineKeyboardButton("✅ Достаточно на сегодня", callback_data="back_to_menu"),
+        ],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_wins_keyboard() -> InlineKeyboardMarkup:
+    """Keyboard for the Diary of Wins feature."""
+    keyboard = [
+        [
+            InlineKeyboardButton("➕ Добавить победу", callback_data="add_win"),
+        ],
+        [
+            InlineKeyboardButton("« Назад в меню", callback_data="back_to_menu"),
         ],
     ]
     return InlineKeyboardMarkup(keyboard)
