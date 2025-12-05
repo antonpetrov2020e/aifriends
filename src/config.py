@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     anthropic_api_key: str = Field(default="", alias="ANTHROPIC_API_KEY")
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
 
+    # Voice transcription (OpenAI Whisper)
+    whisper_enabled: bool = Field(default=True, alias="WHISPER_ENABLED")
+
     # Application
     environment: str = Field(default="development", alias="ENVIRONMENT")
     debug: bool = Field(default=True, alias="DEBUG")

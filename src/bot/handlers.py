@@ -40,6 +40,7 @@ class BotHandlers:
         memory_service,
         card_service,
         payment_service,
+        transcription_service=None,
         free_analysis_limit: int = 3
     ):
         self.db = db_session
@@ -49,6 +50,7 @@ class BotHandlers:
         self.memory_service = memory_service
         self.card_service = card_service
         self.payment_service = payment_service
+        self.transcription_service = transcription_service
         self.free_analysis_limit = free_analysis_limit
 
     def _check_rate_limit(self, context: ContextTypes.DEFAULT_TYPE, limit_type: str = "messages") -> tuple[bool, int]:
@@ -1516,13 +1518,73 @@ class BotHandlers:
             )
 
     async def handle_voice_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle voice messages - politely ask for text"""
+        """Handle voice messages - transcribe and process as text"""
         telegram_user = update.effective_user
         user = self.user_service.get_or_create_user(telegram_id=telegram_user.id)
         display_name = self.user_service.get_display_name(user)
 
-        await update.message.reply_text(
-            f"{display_name}, я пока не умею слушать голосовые сообщения 🎤\n\n"
-            "Напиши мне текстом — так я смогу лучше тебя понять и помочь 💬",
+        # Check if transcription service is available
+        if not self.transcription_service:
+            await update.message.reply_text(
+                f"{display_name}, я пока не умею слушать голосовые сообщения 🎤\n\n"
+                "Напиши мне текстом — так я смогу лучше тебя понять и помочь 💬",
+                parse_mode=ParseMode.HTML,
+            )
+            return
+
+        # Send "processing" message
+        processing_msg = await update.message.reply_text(
+            "🎧 Слушаю твоё голосовое...",
             parse_mode=ParseMode.HTML,
         )
+
+        try:
+            # Get voice file ID
+            voice = update.message.voice or update.message.audio
+            if not voice:
+                await processing_msg.edit_text(
+                    "Не смогла получить голосовое сообщение. Попробуй ещё раз?",
+                    parse_mode=ParseMode.HTML,
+                )
+                return
+
+            # Transcribe
+            transcribed_text = await self.transcription_service.transcribe_telegram_voice(
+                bot=update.get_bot(),
+                voice_file_id=voice.file_id,
+            )
+
+            if not transcribed_text:
+                await processing_msg.edit_text(
+                    f"{display_name}, не получилось расслышать 😔\n\n"
+                    "Попробуй записать ещё раз или напиши текстом?",
+                    parse_mode=ParseMode.HTML,
+                )
+                return
+
+            # Delete processing message
+            await processing_msg.delete()
+
+            # Show what was transcribed (optional - helps user see what bot understood)
+            await update.message.reply_text(
+                f"🎤 <i>Услышала:</i> «{transcribed_text[:200]}{'...' if len(transcribed_text) > 200 else ''}»",
+                parse_mode=ParseMode.HTML,
+            )
+
+            # Create a fake update with transcribed text to reuse handle_text_message logic
+            # Instead of faking, we'll just call the internal handlers directly
+            update.message.text = transcribed_text
+
+            # Process as regular text message
+            await self.handle_text_message(update, context)
+
+        except Exception as e:
+            logger.error(f"Error handling voice message: {e}", exc_info=True)
+            try:
+                await processing_msg.edit_text(
+                    f"{display_name}, что-то пошло не так с голосовым 😔\n\n"
+                    "Попробуй ещё раз или напиши текстом?",
+                    parse_mode=ParseMode.HTML,
+                )
+            except Exception:
+                pass

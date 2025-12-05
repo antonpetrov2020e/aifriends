@@ -20,6 +20,7 @@ from .services.ai_service import AIService
 from .services.memory_service import MemoryService
 from .services.card_service import CardService
 from .services.payment_service import payment_service
+from .services.transcription_service import TranscriptionService
 
 
 # Configure logging
@@ -54,6 +55,14 @@ def main():
     logger.info("Initializing Card service...")
     card_service = CardService(generated_cards_path=settings.generated_cards_path)
 
+    # Initialize Transcription service (for voice messages)
+    transcription_service = None
+    if settings.whisper_enabled and settings.openai_api_key:
+        logger.info("Initializing Transcription service (Whisper)...")
+        transcription_service = TranscriptionService(api_key=settings.openai_api_key)
+    else:
+        logger.info("Transcription service disabled (OPENAI_API_KEY not set or WHISPER_ENABLED=false)")
+
     # Initialize handlers
     logger.info("Initializing bot handlers...")
     handlers = BotHandlers(
@@ -62,6 +71,7 @@ def main():
         memory_service=memory_service,
         card_service=card_service,
         payment_service=payment_service,
+        transcription_service=transcription_service,
         free_analysis_limit=settings.free_analysis_per_week,
     )
 
