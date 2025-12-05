@@ -22,7 +22,7 @@ class TranscriptionService:
         Args:
             api_key: Deepgram API key
         """
-        self.client = DeepgramClient(api_key)
+        self.client = DeepgramClient(api_key=api_key)
 
     async def transcribe_audio(self, audio_file_path: str, language: str = "ru") -> str:
         """
