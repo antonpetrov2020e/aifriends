@@ -5,8 +5,7 @@ Deepgram works in Russia and has a free tier (45 hours).
 import logging
 import tempfile
 import os
-from deepgram import DeepgramClient, PreRecordedResponse
-from deepgram.clients.listen.v1.rest.options import PrerecordedOptions
+from deepgram import DeepgramClient
 
 logger = logging.getLogger(__name__)
 
@@ -44,13 +43,13 @@ class TranscriptionService:
                 "buffer": buffer_data,
             }
 
-            options = PrerecordedOptions(
-                model="nova-2",
-                language=language,
-                smart_format=True,
-            )
+            options = {
+                "model": "nova-2",
+                "language": language,
+                "smart_format": True,
+            }
 
-            response: PreRecordedResponse = await self.client.listen.asyncrest.v("1").transcribe_file(
+            response = await self.client.listen.asyncrest.v("1").transcribe_file(
                 payload, options
             )
 
