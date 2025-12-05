@@ -591,15 +591,10 @@ class BotHandlers:
                 content=empathetic_response
             )
 
+            # Send empathetic response with feelings keyboard
+            # AI response already contains a question, so we add buttons for quick selection
             await update.message.reply_text(
                 empathetic_response,
-                parse_mode=ParseMode.HTML,
-            )
-
-            # After empathetic response, ask about feelings
-            await asyncio.sleep(2)
-            await update.message.reply_text(
-                msg.ANALYSIS_FEELINGS_PROMPT,
                 reply_markup=kb.get_feelings_keyboard(),
                 parse_mode=ParseMode.HTML,
             )
