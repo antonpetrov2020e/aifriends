@@ -565,12 +565,19 @@ class BotHandlers:
         telegram_user = update.effective_user
         user = self.user_service.get_or_create_user(telegram_id=telegram_user.id)
 
+        # Get user's name for personalization
+        display_name = self.user_service.get_display_name(user)
+
         # Create or get conversation for analysis
         conversation = self.conversation_service.get_or_create_conversation(
             user=user,
             conversation_type="analysis"
         )
         context.user_data["conversation_id"] = conversation.id
+
+        # Set conversation mode for follow-up messages
+        context.user_data["conversation_mode"] = "analysis_dialogue"
+        context.user_data["conversation_history"] = []
 
         # Save situation description to DB
         self.conversation_service.save_message(
@@ -582,7 +589,10 @@ class BotHandlers:
 
         try:
             # Generate empathetic response with active listening
-            empathetic_response = await self.ai_service.empathetic_first_response(text)
+            empathetic_response = await self.ai_service.empathetic_first_response(
+                user_story=text,
+                user_name=display_name
+            )
 
             # Save empathetic response to DB
             self.conversation_service.save_message(
@@ -591,18 +601,20 @@ class BotHandlers:
                 content=empathetic_response
             )
 
-            # Send empathetic response with feelings keyboard
-            # AI response already contains a question, so we add buttons for quick selection
+            # Save to conversation history for context
+            context.user_data["conversation_history"].append({"role": "user", "content": text})
+            context.user_data["conversation_history"].append({"role": "assistant", "content": empathetic_response})
+
+            # Send empathetic response WITHOUT buttons - let the user respond naturally
             await update.message.reply_text(
                 empathetic_response,
-                reply_markup=kb.get_feelings_keyboard(),
                 parse_mode=ParseMode.HTML,
             )
 
         except Exception as e:
             logger.error(f"Error in empathetic first response: {e}", exc_info=True)
-            # Fallback to direct feelings prompt
-            fallback_msg = "Я слышу, как это для тебя важно. Давай разберемся глубже.\n\nЧто ты почувствовала в тот момент?"
+            # Fallback to direct question
+            fallback_msg = f"{display_name}, я вижу, что это для тебя важно. Расскажи подробнее — что ты почувствовала в тот момент?"
 
             # Save fallback to DB
             self.conversation_service.save_message(
@@ -613,7 +625,6 @@ class BotHandlers:
 
             await update.message.reply_text(
                 fallback_msg,
-                reply_markup=kb.get_feelings_keyboard(),
                 parse_mode=ParseMode.HTML,
             )
 
@@ -716,6 +727,68 @@ class BotHandlers:
             await update.message.reply_text(
                 "Слушай, у меня что-то тормозит сейчас 😔\n\nНо я здесь и слышу тебя. Продолжай, если хочешь, или можем вернуться к главному меню.",
                 reply_markup=kb.get_back_to_menu_keyboard(),
+                parse_mode=ParseMode.HTML,
+            )
+
+    async def _handle_analysis_dialogue_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle text messages in analysis_dialogue mode - free-form conversation about the situation."""
+        text = update.message.text
+        telegram_user = update.effective_user
+        user = self.user_service.get_or_create_user(telegram_id=telegram_user.id)
+        display_name = self.user_service.get_display_name(user)
+
+        # Get conversation from DB
+        conversation_id = context.user_data.get("conversation_id")
+        if conversation_id:
+            conversation = self.db.query(Conversation).filter(Conversation.id == conversation_id).first()
+        else:
+            conversation = self.conversation_service.get_or_create_conversation(
+                user=user,
+                conversation_type="analysis"
+            )
+            context.user_data["conversation_id"] = conversation.id
+
+        # Get conversation history from context
+        conversation_history = context.user_data.get("conversation_history", [])
+
+        # Save user message to DB
+        self.conversation_service.save_message(
+            conversation=conversation,
+            role="user",
+            content=text
+        )
+
+        # Add to history
+        conversation_history.append({"role": "user", "content": text})
+
+        try:
+            # Continue empathetic dialogue
+            ai_response = await self.ai_service.chat(
+                user_message=text,
+                conversation_history=conversation_history,
+                context=f"Это продолжение разговора с {display_name} о её ситуации. Продолжай активное слушание, задавай открытые вопросы, помогай разобраться в чувствах. Обращайся по имени иногда."
+            )
+
+            # Save AI response
+            self.conversation_service.save_message(
+                conversation=conversation,
+                role="assistant",
+                content=ai_response
+            )
+
+            # Update history
+            conversation_history.append({"role": "assistant", "content": ai_response})
+            context.user_data["conversation_history"] = conversation_history
+
+            await update.message.reply_text(
+                ai_response,
+                parse_mode=ParseMode.HTML,
+            )
+
+        except Exception as e:
+            logger.error(f"Error in analysis_dialogue: {e}", exc_info=True)
+            await update.message.reply_text(
+                f"{display_name}, прости, что-то пошло не так. Можешь повторить?",
                 parse_mode=ParseMode.HTML,
             )
 
@@ -975,6 +1048,10 @@ class BotHandlers:
 
         elif conversation_mode == "adding_win":
             await self._handle_adding_win_message(update, context)
+            return
+
+        elif conversation_mode == "analysis_dialogue":
+            await self._handle_analysis_dialogue_message(update, context)
             return
 
         else:

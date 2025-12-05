@@ -210,18 +210,23 @@ class AIService:
                 "summary": ""
             }
 
-    async def empathetic_first_response(self, user_story: str) -> str:
+    async def empathetic_first_response(self, user_story: str, user_name: str = None) -> str:
         """
         Generate deep empathetic response using active listening technique
         This is for the first response to user's situation description
 
         Args:
             user_story: User's detailed situation description
+            user_name: User's name for personalization
 
         Returns:
             Empathetic response with active listening
         """
         try:
+            name_instruction = ""
+            if user_name and user_name != "друг":
+                name_instruction = f"\n- Обращайся к пользователю по имени: {user_name} (используй 1-2 раза естественно)"
+
             prompt = f"""Пользователь только что поделился своей ситуацией. Это твой ПЕРВЫЙ ответ на его историю.
 
 ИСТОРИЯ ПОЛЬЗОВАТЕЛЯ:
@@ -232,13 +237,14 @@ class AIService:
 1. Отрази чувства, которые ты услышала
 2. Перефрази суть ситуации своими словами (покажи, что поняла)
 3. Валидируй эмоции (это нормально чувствовать так)
-4. Задай ОДИН мягкий наводящий вопрос для углубления
+4. Задай ОДИН открытый вопрос для продолжения диалога
 
 ВАЖНО:
 - НЕ используй шаблоны типа "Слышу тебя" или "Я понимаю"
 - Будь конкретной к ЭТОЙ истории
 - Покажи, что ты ПРОЧУВСТВОВАЛА ситуацию
-- Пиши 3-5 предложений
+- Пиши 4-6 предложений{name_instruction}
+- Заверши ОДНИМ открытым вопросом, на который пользователь захочет ответить текстом
 
 Напиши эмпатичный ответ:"""
 
