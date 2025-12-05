@@ -1,19 +1,17 @@
 """
-Service for transcribing voice messages using Groq Whisper API.
-Groq provides free and fast Whisper transcription.
+Service for transcribing voice messages using OpenAI Whisper API.
 """
 import logging
 import tempfile
 import os
-from groq import AsyncGroq
+from openai import AsyncOpenAI
 
 logger = logging.getLogger(__name__)
 
 
 class TranscriptionService:
     """
-    Handles transcription of audio files using Groq's Whisper API.
-    Groq offers free, fast Whisper transcription.
+    Handles transcription of audio files using OpenAI Whisper API.
     """
 
     def __init__(self, api_key: str):
@@ -21,9 +19,9 @@ class TranscriptionService:
         Initialize the transcription service.
 
         Args:
-            api_key: Groq API key for Whisper API access
+            api_key: OpenAI API key for Whisper API access
         """
-        self.client = AsyncGroq(api_key=api_key)
+        self.client = AsyncOpenAI(api_key=api_key)
 
     async def transcribe_audio(self, audio_file_path: str, language: str = "ru") -> str:
         """
@@ -39,7 +37,7 @@ class TranscriptionService:
         try:
             with open(audio_file_path, "rb") as audio_file:
                 transcription = await self.client.audio.transcriptions.create(
-                    model="whisper-large-v3",
+                    model="whisper-1",
                     file=audio_file,
                     language=language,
                     response_format="text",
