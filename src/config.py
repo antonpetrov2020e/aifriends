@@ -24,9 +24,9 @@ class Settings(BaseSettings):
     anthropic_api_key: str = Field(default="", alias="ANTHROPIC_API_KEY")
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
 
-    # Voice transcription (Groq Whisper - free and fast)
-    groq_api_key: str = Field(default="", alias="GROQ_API_KEY")
-    whisper_enabled: bool = Field(default=True, alias="WHISPER_ENABLED")
+    # Voice transcription (Deepgram - works in Russia)
+    deepgram_api_key: str = Field(default="", alias="DEEPGRAM_API_KEY")
+    transcription_enabled: bool = Field(default=True, alias="TRANSCRIPTION_ENABLED")
 
     # Application
     environment: str = Field(default="development", alias="ENVIRONMENT")

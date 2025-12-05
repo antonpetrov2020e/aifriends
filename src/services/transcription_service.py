@@ -1,17 +1,18 @@
 """
-Service for transcribing voice messages using OpenAI Whisper API.
+Service for transcribing voice messages using Deepgram API.
+Deepgram works in Russia and has a free tier (45 hours).
 """
 import logging
 import tempfile
 import os
-from openai import AsyncOpenAI
+from deepgram import DeepgramClient, PrerecordedOptions, FileSource
 
 logger = logging.getLogger(__name__)
 
 
 class TranscriptionService:
     """
-    Handles transcription of audio files using OpenAI Whisper API.
+    Handles transcription of audio files using Deepgram API.
     """
 
     def __init__(self, api_key: str):
@@ -19,9 +20,9 @@ class TranscriptionService:
         Initialize the transcription service.
 
         Args:
-            api_key: OpenAI API key for Whisper API access
+            api_key: Deepgram API key
         """
-        self.client = AsyncOpenAI(api_key=api_key)
+        self.client = DeepgramClient(api_key)
 
     async def transcribe_audio(self, audio_file_path: str, language: str = "ru") -> str:
         """
@@ -36,14 +37,25 @@ class TranscriptionService:
         """
         try:
             with open(audio_file_path, "rb") as audio_file:
-                transcription = await self.client.audio.transcriptions.create(
-                    model="whisper-1",
-                    file=audio_file,
-                    language=language,
-                    response_format="text",
-                )
+                buffer_data = audio_file.read()
 
-            return transcription.strip() if transcription else ""
+            payload: FileSource = {
+                "buffer": buffer_data,
+            }
+
+            options = PrerecordedOptions(
+                model="nova-2",
+                language=language,
+                smart_format=True,
+            )
+
+            response = await self.client.listen.asyncrest.v("1").transcribe_file(
+                payload, options
+            )
+
+            # Extract transcript from response
+            transcript = response.results.channels[0].alternatives[0].transcript
+            return transcript.strip() if transcript else ""
 
         except Exception as e:
             logger.error(f"Error transcribing audio: {type(e).__name__}: {e}")

@@ -55,13 +55,13 @@ def main():
     logger.info("Initializing Card service...")
     card_service = CardService(generated_cards_path=settings.generated_cards_path)
 
-    # Initialize Transcription service (for voice messages via OpenAI Whisper)
+    # Initialize Transcription service (for voice messages via Deepgram)
     transcription_service = None
-    if settings.whisper_enabled and settings.openai_api_key:
-        logger.info("Initializing Transcription service (OpenAI Whisper)...")
-        transcription_service = TranscriptionService(api_key=settings.openai_api_key)
+    if settings.transcription_enabled and settings.deepgram_api_key:
+        logger.info("Initializing Transcription service (Deepgram)...")
+        transcription_service = TranscriptionService(api_key=settings.deepgram_api_key)
     else:
-        logger.info("Transcription service disabled (OPENAI_API_KEY not set or WHISPER_ENABLED=false)")
+        logger.info("Transcription service disabled (DEEPGRAM_API_KEY not set or TRANSCRIPTION_ENABLED=false)")
 
     # Initialize handlers
     logger.info("Initializing bot handlers...")
