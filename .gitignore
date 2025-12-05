@@ -59,3 +59,4 @@ Thumbs.db
 # Project specific
 temp/
 cache/
+generated_cards/

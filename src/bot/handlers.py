@@ -4,7 +4,11 @@ Implements Phase 1: Foundation (Onboarding, Panic, Structured Analysis)
 Phase 2: Memory & Viral Cards
 """
 import asyncio
+import logging
+import os
+import traceback
 from typing import List, Dict
+from datetime import datetime, timezone
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
@@ -18,9 +22,16 @@ from ..services.ai_service import AIService
 from ..services.conversation_service import ConversationService
 from ..database.models import User, Conversation, Message
 
+logger = logging.getLogger(__name__)
+
 
 class BotHandlers:
     """Main bot handlers class"""
+
+    # Rate limiting constants
+    MAX_MESSAGES_PER_HOUR = settings.max_messages_per_hour
+    MAX_CARDS_PER_HOUR = settings.max_cards_per_hour
+    MAX_TEXT_LENGTH = 4000  # Maximum characters for user input
 
     def __init__(
         self,
@@ -39,6 +50,103 @@ class BotHandlers:
         self.card_service = card_service
         self.payment_service = payment_service
         self.free_analysis_limit = free_analysis_limit
+
+    def _check_rate_limit(self, context: ContextTypes.DEFAULT_TYPE, limit_type: str = "messages") -> tuple[bool, int]:
+        """
+        Check if user has exceeded rate limit.
+
+        Args:
+            context: Telegram context with user_data
+            limit_type: Type of limit to check ("messages" or "cards")
+
+        Returns:
+            Tuple of (is_allowed, remaining_count)
+        """
+        from datetime import datetime, timedelta
+
+        now = datetime.now(timezone.utc)
+        hour_ago = now - timedelta(hours=1)
+
+        if limit_type == "messages":
+            timestamps_key = "message_timestamps"
+            max_limit = self.MAX_MESSAGES_PER_HOUR
+        else:  # cards
+            timestamps_key = "card_timestamps"
+            max_limit = self.MAX_CARDS_PER_HOUR
+
+        # Get existing timestamps
+        timestamps = context.user_data.get(timestamps_key, [])
+
+        # Filter to only last hour
+        timestamps = [ts for ts in timestamps if ts > hour_ago]
+
+        # Update stored timestamps
+        context.user_data[timestamps_key] = timestamps
+
+        remaining = max_limit - len(timestamps)
+        is_allowed = remaining > 0
+
+        return is_allowed, remaining
+
+    def _record_rate_limit_usage(self, context: ContextTypes.DEFAULT_TYPE, limit_type: str = "messages"):
+        """Record a usage event for rate limiting."""
+        from datetime import datetime
+
+        now = datetime.now(timezone.utc)
+
+        if limit_type == "messages":
+            timestamps_key = "message_timestamps"
+        else:  # cards
+            timestamps_key = "card_timestamps"
+
+        timestamps = context.user_data.get(timestamps_key, [])
+        timestamps.append(now)
+        context.user_data[timestamps_key] = timestamps
+
+    def _validate_user_input(self, text: str) -> tuple[bool, str]:
+        """
+        Validate user input text.
+
+        Args:
+            text: User's input text
+
+        Returns:
+            Tuple of (is_valid, error_message)
+        """
+        if not text or not text.strip():
+            return False, "Сообщение не может быть пустым."
+
+        if len(text) > self.MAX_TEXT_LENGTH:
+            return False, f"Сообщение слишком длинное. Максимум {self.MAX_TEXT_LENGTH} символов."
+
+        return True, ""
+
+    def _cleanup_user_context(self, context: ContextTypes.DEFAULT_TYPE, keys_to_keep: list = None):
+        """
+        Clean up user context data to prevent memory leaks.
+
+        Args:
+            context: Telegram context
+            keys_to_keep: List of keys to preserve (optional)
+        """
+        if keys_to_keep is None:
+            keys_to_keep = []
+
+        # Keys that should persist across conversations
+        persistent_keys = [
+            "message_timestamps",
+            "card_timestamps",
+        ]
+        persistent_keys.extend(keys_to_keep)
+
+        # Clean up non-persistent keys
+        keys_to_remove = [
+            key for key in list(context.user_data.keys())
+            if key not in persistent_keys
+        ]
+
+        for key in keys_to_remove:
+            context.user_data.pop(key, None)
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /start command - Improved onboarding flow"""
@@ -65,7 +173,7 @@ class BotHandlers:
 
             if last_conv:
                 from datetime import datetime
-                days_ago = (datetime.utcnow() - last_conv.started_at).days
+                days_ago = (datetime.now(timezone.utc) - last_conv.started_at).days
 
                 if days_ago == 0:
                     greeting = f"С возвращением, {display_name}! 👋\n\nПродолжим?"
@@ -276,13 +384,14 @@ class BotHandlers:
         await query.answer()
 
         if query.data == "back_to_menu":
-            # Clear conversation context
-            context.user_data.pop("conversation_mode", None)
-            context.user_data.pop("conversation_history", None)
+            # Clean up user context to prevent memory leaks
+            self._cleanup_user_context(context)
 
-            await query.edit_message_text("Чем могу помочь?", reply_markup=kb.get_main_menu_keyboard(),
-            parse_mode=ParseMode.HTML,
-        )
+            await query.edit_message_text(
+                "Чем могу помочь?",
+                reply_markup=kb.get_main_menu_keyboard(),
+                parse_mode=ParseMode.HTML,
+            )
 
     async def panic_button(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle Panic button - immediate anxiety relief"""
@@ -381,7 +490,7 @@ class BotHandlers:
             # Show freemium limit message
             limit_msg = msg.FREE_LIMIT_REACHED.format(
                 limit=self.free_analysis_limit,
-                price=990,  # Premium price
+                price=settings.premium_price_monthly,
             )
             await query.edit_message_text(limit_msg, reply_markup=kb.get_back_to_menu_keyboard(),
             parse_mode=ParseMode.HTML,
@@ -426,409 +535,453 @@ class BotHandlers:
         context.user_data["conversation_mode"] = "situation_description"
         context.user_data["waiting_for"] = "situation_details"
 
-    async def handle_text_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle free-form text messages based on conversation context"""
+    async def _handle_onboarding_name_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle user's name during onboarding."""
         text = update.message.text
-        conversation_mode = context.user_data.get("conversation_mode")
-        waiting_for = context.user_data.get("waiting_for")
+        telegram_user = update.effective_user
+        user = self.user_service.get_or_create_user(telegram_id=telegram_user.id)
 
-        if waiting_for == "name":
-            # User provided their name during onboarding
-            telegram_user = update.effective_user
-            user = self.user_service.get_or_create_user(telegram_id=telegram_user.id)
+        # Save preferred name
+        self.user_service.set_preferred_name(user, text.strip())
 
-            # Save preferred name
-            self.user_service.set_preferred_name(user, text.strip())
+        # Send personalized greeting
+        await update.message.reply_text(
+            msg.NICE_TO_MEET.format(name=text.strip()),
+            reply_markup=kb.get_show_features_keyboard(),
+            parse_mode=ParseMode.HTML,
+        )
 
-            # Send personalized greeting
+        # Clear waiting state
+        context.user_data["waiting_for"] = None
+
+    async def _handle_situation_details_input(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle user's situation details input."""
+        text = update.message.text
+        context.user_data["current_situation"] = text
+
+        telegram_user = update.effective_user
+        user = self.user_service.get_or_create_user(telegram_id=telegram_user.id)
+
+        # Create or get conversation for analysis
+        conversation = self.conversation_service.get_or_create_conversation(
+            user=user,
+            conversation_type="analysis"
+        )
+        context.user_data["conversation_id"] = conversation.id
+
+        # Save situation description to DB
+        self.conversation_service.save_message(
+            conversation=conversation,
+            role="user",
+            content=text,
+            message_type="situation_description"
+        )
+
+        try:
+            # Generate empathetic response with active listening
+            empathetic_response = await self.ai_service.empathetic_first_response(text)
+
+            # Save empathetic response to DB
+            self.conversation_service.save_message(
+                conversation=conversation,
+                role="assistant",
+                content=empathetic_response
+            )
+
             await update.message.reply_text(
-                msg.NICE_TO_MEET.format(name=text.strip()),
-                reply_markup=kb.get_show_features_keyboard(),
+                empathetic_response,
                 parse_mode=ParseMode.HTML,
             )
 
-            # Clear waiting state
-            context.user_data["waiting_for"] = None
-            return
+            # After empathetic response, ask about feelings
+            await asyncio.sleep(2)
+            await update.message.reply_text(
+                msg.ANALYSIS_FEELINGS_PROMPT,
+                reply_markup=kb.get_feelings_keyboard(),
+                parse_mode=ParseMode.HTML,
+            )
 
-        elif waiting_for == "situation_details":
-            # User provided situation details - use AI for empathetic response
-            # Store situation in context
-            context.user_data["current_situation"] = text
+        except Exception as e:
+            logger.error(f"Error in empathetic first response: {e}", exc_info=True)
+            # Fallback to direct feelings prompt
+            fallback_msg = "Я слышу, как это для тебя важно. Давай разберемся глубже.\n\nЧто ты почувствовала в тот момент?"
 
-            telegram_user = update.effective_user
-            user = self.user_service.get_or_create_user(telegram_id=telegram_user.id)
+            # Save fallback to DB
+            self.conversation_service.save_message(
+                conversation=conversation,
+                role="assistant",
+                content=fallback_msg
+            )
 
-            # Create or get conversation for analysis
+            await update.message.reply_text(
+                fallback_msg,
+                reply_markup=kb.get_feelings_keyboard(),
+                parse_mode=ParseMode.HTML,
+            )
+
+        # Clear waiting state
+        context.user_data["waiting_for"] = None
+
+    async def _handle_panic_talk_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle text messages in panic_talk mode."""
+        text = update.message.text
+        conversation_history = context.user_data.get("conversation_history", [])
+        telegram_user = update.effective_user
+        user = self.user_service.get_or_create_user(telegram_id=telegram_user.id)
+
+        # Get conversation from DB
+        conversation_id = context.user_data.get("conversation_id")
+        if conversation_id:
+            conversation = self.db.query(Conversation).filter(Conversation.id == conversation_id).first()
+        else:
+            # Fallback: create conversation if not exists
+            conversation = self.conversation_service.get_or_create_conversation(
+                user=user,
+                conversation_type="panic"
+            )
+            context.user_data["conversation_id"] = conversation.id
+
+        # Load conversation history from DB
+        conversation_history = self.conversation_service.get_conversation_history(
+            conversation=conversation,
+            limit=20  # Last 20 messages for context
+        )
+
+        # Save user message to DB
+        self.conversation_service.save_message(
+            conversation=conversation,
+            role="user",
+            content=text
+        )
+
+        try:
+            # Recall relevant memories (Phase 2)
+            memories = self.memory_service.search_memories(
+                user_id=telegram_user.id,
+                query_text=text,
+                n_results=3,
+            )
+            memory_context = ""
+            if memories:
+                formatted_memories = "\n- ".join(memories)
+                memory_context = f"Вот некоторые выдержки из наших прошлых разговоров:\n- {formatted_memories}"
+
+
+            # Get AI response
+            response = await self.ai_service.chat(
+                user_message=text,
+                conversation_history=conversation_history[:-1],  # Exclude current message
+                context=f"Пользователь в режиме 'паника' - нужна эмоциональная поддержка, валидация чувств и короткий эмпатичный ответ (2-3 предложения). Не давай советов, просто поддержи.\n\n{memory_context}"
+            )
+
+            # Save the turn to memory
+            self.memory_service.add_memory(
+                user_id=telegram_user.id,
+                text=f"User: {text}\nAssistant: {response}",
+                metadata={"mode": "panic_talk"}
+            )
+
+            # Save AI response to DB
+            self.conversation_service.save_message(
+                conversation=conversation,
+                role="assistant",
+                content=response
+            )
+
+            await update.message.reply_text(response, parse_mode=ParseMode.HTML)
+
+            # Check for insight (don't block on error)
+            try:
+                has_insight = await self.ai_service.detect_insight(text)
+                if has_insight:
+                    # Save insight text for card generation (Phase 2)
+                    context.user_data["last_insight_text"] = text
+                    await asyncio.sleep(1)
+
+                    if self.user_service.is_premium(user):
+                        prompt = msg.INSIGHT_DETECTED + "\n\n" + "Выбери стиль для своей карточки:"
+                        keyboard = kb.get_premium_card_keyboard()
+                    else:
+                        prompt = msg.INSIGHT_DETECTED + "\n\n" + msg.INSIGHT_SHARE_OFFER
+                        keyboard = kb.get_insight_share_keyboard()
+
+                    await update.message.reply_text(
+                        prompt,
+                        reply_markup=keyboard,
+                        parse_mode=ParseMode.HTML,
+                    )
+            except Exception:
+                pass  # Silently ignore insight detection errors
+        except Exception as e:
+            logger.error(f"Error in panic_talk mode: {e}", exc_info=True)
+            # Show empathetic error message
+            await update.message.reply_text(
+                "Слушай, у меня что-то тормозит сейчас 😔\n\nНо я здесь и слышу тебя. Продолжай, если хочешь, или можем вернуться к главному меню.",
+                reply_markup=kb.get_back_to_menu_keyboard(),
+                parse_mode=ParseMode.HTML,
+            )
+
+    async def _handle_thinking_dialogue_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle text messages in thinking_dialogue mode."""
+        text = update.message.text
+        conversation_history = context.user_data.get("conversation_history", [])
+        telegram_user = update.effective_user
+        user = self.user_service.get_or_create_user(telegram_id=telegram_user.id)
+
+        # Get conversation from DB
+        conversation_id = context.user_data.get("conversation_id")
+        if conversation_id:
+            conversation = self.db.query(Conversation).filter(Conversation.id == conversation_id).first()
+        else:
+            # Fallback: create conversation if not exists
             conversation = self.conversation_service.get_or_create_conversation(
                 user=user,
                 conversation_type="analysis"
             )
             context.user_data["conversation_id"] = conversation.id
 
-            # Save situation description to DB
-            self.conversation_service.save_message(
-                conversation=conversation,
-                role="user",
-                content=text,
-                message_type="situation_description"
+        # Load conversation history from DB
+        conversation_history = self.conversation_service.get_conversation_history(
+            conversation=conversation,
+            limit=20  # Last 20 messages for context
+        )
+
+        # Save user message to DB
+        self.conversation_service.save_message(
+            conversation=conversation,
+            role="user",
+            content=text
+        )
+
+        try:
+            # Recall relevant memories (Phase 2)
+            memories = self.memory_service.search_memories(
+                user_id=telegram_user.id,
+                query_text=text,
+                n_results=3,
+            )
+            memory_context = ""
+            if memories:
+                formatted_memories = "\n- ".join(memories)
+                memory_context = f"Вот некоторые выдержки из наших прошлых разговоров:\n- {formatted_memories}"
+
+            # Get AI response with Socratic method
+            response = await self.ai_service.chat(
+                user_message=text,
+                conversation_history=conversation_history[:-1],  # Exclude current message
+                context=f"Продолжай задавать короткие наводящие вопросы (1-2 предложения). Помоги пользователю самостоятельно прийти к решению. Не давай прямых советов.\n\n{memory_context}"
             )
 
+            # Save the turn to memory
+            self.memory_service.add_memory(
+                user_id=telegram_user.id,
+                text=f"User: {text}\nAssistant: {response}",
+                metadata={"mode": "thinking_dialogue"}
+            )
+
+            # Save AI response to DB
+            self.conversation_service.save_message(
+                conversation=conversation,
+                role="assistant",
+                content=response
+            )
+
+            await update.message.reply_text(response, parse_mode=ParseMode.HTML)
+
+            # Check for insight (don't block on error)
             try:
-                # Generate empathetic response with active listening
-                empathetic_response = await self.ai_service.empathetic_first_response(text)
+                has_insight = await self.ai_service.detect_insight(text)
+                if has_insight:
+                    # Save insight text for card generation (Phase 2)
+                    context.user_data["last_insight_text"] = text
+                    await asyncio.sleep(1)
+                    
+                    if self.user_service.is_premium(user):
+                        prompt = msg.INSIGHT_DETECTED + "\n\n" + "Выбери стиль для своей карточки:"
+                        keyboard = kb.get_premium_card_keyboard()
+                    else:
+                        prompt = msg.INSIGHT_DETECTED + "\n\n" + msg.INSIGHT_SHARE_OFFER
+                        keyboard = kb.get_insight_share_keyboard()
 
-                # Save empathetic response to DB
-                self.conversation_service.save_message(
-                    conversation=conversation,
-                    role="assistant",
-                    content=empathetic_response
-                )
+                    await update.message.reply_text(
+                        prompt,
+                        reply_markup=keyboard,
+                        parse_mode=ParseMode.HTML,
+                    )
+            except Exception:
+                pass  # Silently ignore insight detection errors
+        except Exception as e:
+            logger.error(f"Error in thinking_dialogue mode: {e}", exc_info=True)
+            # Show empathetic error message
+            await update.message.reply_text(
+                "Упс, что-то пошло не так 😔\n\nДавай попробуем ещё раз, или можем вернуться к главному меню.",
+                reply_markup=kb.get_back_to_menu_keyboard(),
+                parse_mode=ParseMode.HTML,
+            )
 
+    async def _handle_adding_win_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle text messages in adding_win mode."""
+        text = update.message.text
+        telegram_user = update.effective_user
+        user = self.user_service.get_or_create_user(telegram_id=telegram_user.id)
+        
+        self.user_service.add_win(user, text)
+        
+        await update.message.reply_text(
+            "Отлично, победа записана! 💪",
+            reply_markup=kb.get_wins_keyboard()
+        )
+        context.user_data.pop("conversation_mode", None)
+
+    async def _handle_general_conversation_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle general conversation messages."""
+        text = update.message.text
+        telegram_user = update.effective_user
+        user = self.user_service.get_or_create_user(telegram_id=telegram_user.id)
+
+        # Try to get most recent active conversation
+        conversation = (
+            self.db.query(Conversation)
+            .filter(
+                Conversation.user_id == user.id,
+                Conversation.ended_at.is_(None)
+            )
+            .order_by(Conversation.started_at.desc())
+            .first()
+        )
+
+        if not conversation:
+            # Create new general conversation
+            conversation = self.conversation_service.get_or_create_conversation(
+                user=user,
+                conversation_type="general"
+            )
+            context.user_data["conversation_id"] = conversation.id
+            context.user_data["conversation_mode"] = "general"
+
+        # Load full conversation history from DB
+        conversation_history = self.conversation_service.get_conversation_history(
+            conversation=conversation,
+            limit=30  # Last 30 messages for context
+        )
+
+        # Save user message to DB
+        self.conversation_service.save_message(
+            conversation=conversation,
+            role="user",
+            content=text
+        )
+
+        try:
+            # Recall relevant memories
+            memories = self.memory_service.search_memories(
+                user_id=telegram_user.id,
+                query_text=text,
+                n_results=5,
+            )
+            memory_context = ""
+            if memories:
+                formatted_memories = "\n- ".join(memories)
+                memory_context = f"Вот некоторые выдержки из наших прошлых разговоров:\n- {formatted_memories}"
+
+            # Get summary of recent topics for better context
+            recent_summary = self.conversation_service.get_recent_conversations_summary(
+                user=user,
+                days=7,
+                limit=3
+            )
+
+            context_prompt = "Свободное общение. Используй АКТИВНОЕ СЛУШАНИЕ."
+            if recent_summary:
+                context_prompt += f"\n\nКраткая история последних разговоров:\n{recent_summary}"
+            if memory_context:
+                context_prompt += f"\n\n{memory_context}"
+
+
+            # Get AI response with full history
+            response = await self.ai_service.chat(
+                user_message=text,
+                conversation_history=conversation_history,
+                context=context_prompt
+            )
+
+            # Save the turn to memory
+            self.memory_service.add_memory(
+                user_id=telegram_user.id,
+                text=f"User: {text}\nAssistant: {response}",
+                metadata={"mode": "general"}
+            )
+
+            # Save AI response to DB
+            self.conversation_service.save_message(
+                conversation=conversation,
+                role="assistant",
+                content=response
+            )
+
+            await update.message.reply_text(response, parse_mode=ParseMode.HTML)
+
+        except Exception as e:
+            logger.error(f"Error in general conversation: {e}", exc_info=True)
+            await update.message.reply_text(
+                "Не совсем поняла 🤔\n\nВыбери, пожалуйста, что тебе нужно:",
+                reply_markup=kb.get_main_menu_keyboard(),
+                parse_mode=ParseMode.HTML,
+            )
+
+    async def handle_text_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle free-form text messages based on conversation context"""
+        text = update.message.text
+        conversation_mode = context.user_data.get("conversation_mode")
+        waiting_for = context.user_data.get("waiting_for")
+
+        # Validate user input
+        is_valid, error_msg = self._validate_user_input(text)
+        if not is_valid:
+            await update.message.reply_text(
+                error_msg,
+                parse_mode=ParseMode.HTML,
+            )
+            return
+
+        # Check rate limit (except for name input which is part of onboarding)
+        if waiting_for != "name":
+            is_allowed, remaining = self._check_rate_limit(context, "messages")
+            if not is_allowed:
                 await update.message.reply_text(
-                    empathetic_response,
+                    "Ты отправила слишком много сообщений за последний час. "
+                    "Давай сделаем небольшую паузу? Попробуй снова чуть позже 💙",
+                    reply_markup=kb.get_back_to_menu_keyboard(),
                     parse_mode=ParseMode.HTML,
                 )
+                return
 
-                # After empathetic response, ask about feelings
-                await asyncio.sleep(2)
-                await update.message.reply_text(
-                    msg.ANALYSIS_FEELINGS_PROMPT,
-                    reply_markup=kb.get_feelings_keyboard(),
-                    parse_mode=ParseMode.HTML,
-                )
+            # Record usage
+            self._record_rate_limit_usage(context, "messages")
 
-            except Exception as e:
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.error(f"Error in empathetic first response: {e}")
-                # Fallback to direct feelings prompt
-                fallback_msg = "Я слышу, как это для тебя важно. Давай разберемся глубже.\n\nЧто ты почувствовала в тот момент?"
+        if waiting_for == "name":
+            await self._handle_onboarding_name_input(update, context)
+            return
 
-                # Save fallback to DB
-                self.conversation_service.save_message(
-                    conversation=conversation,
-                    role="assistant",
-                    content=fallback_msg
-                )
-
-                await update.message.reply_text(
-                    fallback_msg,
-                    reply_markup=kb.get_feelings_keyboard(),
-                    parse_mode=ParseMode.HTML,
-                )
-
-            # Clear waiting state
-            context.user_data["waiting_for"] = None
+        elif waiting_for == "situation_details":
+            await self._handle_situation_details_input(update, context)
+            return
 
         elif conversation_mode == "panic_talk":
-            # In panic talk mode - use AI to provide empathetic response
-            conversation_history = context.user_data.get("conversation_history", [])
-            telegram_user = update.effective_user
-            user = self.user_service.get_or_create_user(telegram_id=telegram_user.id)
-
-            # Get conversation from DB
-            conversation_id = context.user_data.get("conversation_id")
-            if conversation_id:
-                conversation = self.db.query(Conversation).filter(Conversation.id == conversation_id).first()
-            else:
-                # Fallback: create conversation if not exists
-                conversation = self.conversation_service.get_or_create_conversation(
-                    user=user,
-                    conversation_type="panic"
-                )
-                context.user_data["conversation_id"] = conversation.id
-
-            # Load conversation history from DB
-            conversation_history = self.conversation_service.get_conversation_history(
-                conversation=conversation,
-                limit=20  # Last 20 messages for context
-            )
-
-            # Save user message to DB
-            self.conversation_service.save_message(
-                conversation=conversation,
-                role="user",
-                content=text
-            )
-
-            try:
-                # Recall relevant memories (Phase 2)
-                memories = self.memory_service.search_memories(
-                    user_id=telegram_user.id,
-                    query_text=text,
-                    n_results=3,
-                )
-                memory_context = ""
-                if memories:
-                    formatted_memories = "\n- ".join(memories)
-                    memory_context = f"Вот некоторые выдержки из наших прошлых разговоров:\n- {formatted_memories}"
-
-
-                # Get AI response
-                response = await self.ai_service.chat(
-                    user_message=text,
-                    conversation_history=conversation_history[:-1],  # Exclude current message
-                    context=f"Пользователь в режиме 'паника' - нужна эмоциональная поддержка, валидация чувств и короткий эмпатичный ответ (2-3 предложения). Не давай советов, просто поддержи.\n\n{memory_context}"
-                )
-
-                # Save the turn to memory
-                self.memory_service.add_memory(
-                    user_id=telegram_user.id,
-                    text=f"User: {text}\nAssistant: {response}",
-                    metadata={"mode": "panic_talk"}
-                )
-
-                # Save AI response to DB
-                self.conversation_service.save_message(
-                    conversation=conversation,
-                    role="assistant",
-                    content=response
-                )
-
-                await update.message.reply_text(response, parse_mode=ParseMode.HTML)
-
-                # Check for insight (don't block on error)
-                try:
-                    has_insight = await self.ai_service.detect_insight(text)
-                    if has_insight:
-                        # Save insight text for card generation (Phase 2)
-                        context.user_data["last_insight_text"] = text
-                        await asyncio.sleep(1)
-
-                        if self.user_service.is_premium(user):
-                            prompt = msg.INSIGHT_DETECTED + "\n\n" + "Выбери стиль для своей карточки:"
-                            keyboard = kb.get_premium_card_keyboard()
-                        else:
-                            prompt = msg.INSIGHT_DETECTED + "\n\n" + msg.INSIGHT_SHARE_OFFER
-                            keyboard = kb.get_insight_share_keyboard()
-
-                        await update.message.reply_text(
-                            prompt,
-                            reply_markup=keyboard,
-                            parse_mode=ParseMode.HTML,
-                        )
-                except:
-                    pass  # Silently ignore insight detection errors
-            except Exception as e:
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.error(f"Error in panic_talk mode: {e}")
-                # Show empathetic error message
-                await update.message.reply_text(
-                    "Слушай, у меня что-то тормозит сейчас 😔\n\nНо я здесь и слышу тебя. Продолжай, если хочешь, или можем вернуться к главному меню.",
-                    reply_markup=kb.get_back_to_menu_keyboard(),
-                    parse_mode=ParseMode.HTML,
-                )
+            await self._handle_panic_talk_message(update, context)
+            return
 
         elif conversation_mode == "thinking_dialogue":
-            # User is in thinking dialogue (Socratic method) - use AI
-            conversation_history = context.user_data.get("conversation_history", [])
-            telegram_user = update.effective_user
-            user = self.user_service.get_or_create_user(telegram_id=telegram_user.id)
-
-            # Get conversation from DB
-            conversation_id = context.user_data.get("conversation_id")
-            if conversation_id:
-                conversation = self.db.query(Conversation).filter(Conversation.id == conversation_id).first()
-            else:
-                # Fallback: create conversation if not exists
-                conversation = self.conversation_service.get_or_create_conversation(
-                    user=user,
-                    conversation_type="analysis"
-                )
-                context.user_data["conversation_id"] = conversation.id
-
-            # Load conversation history from DB
-            conversation_history = self.conversation_service.get_conversation_history(
-                conversation=conversation,
-                limit=20  # Last 20 messages for context
-            )
-
-            # Save user message to DB
-            self.conversation_service.save_message(
-                conversation=conversation,
-                role="user",
-                content=text
-            )
-
-            try:
-                # Recall relevant memories (Phase 2)
-                memories = self.memory_service.search_memories(
-                    user_id=telegram_user.id,
-                    query_text=text,
-                    n_results=3,
-                )
-                memory_context = ""
-                if memories:
-                    formatted_memories = "\n- ".join(memories)
-                    memory_context = f"Вот некоторые выдержки из наших прошлых разговоров:\n- {formatted_memories}"
-
-                # Get AI response with Socratic method
-                response = await self.ai_service.chat(
-                    user_message=text,
-                    conversation_history=conversation_history[:-1],  # Exclude current message
-                    context=f"Продолжай задавать короткие наводящие вопросы (1-2 предложения). Помоги пользователю самостоятельно прийти к решению. Не давай прямых советов.\n\n{memory_context}"
-                )
-
-                # Save the turn to memory
-                self.memory_service.add_memory(
-                    user_id=telegram_user.id,
-                    text=f"User: {text}\nAssistant: {response}",
-                    metadata={"mode": "thinking_dialogue"}
-                )
-
-                # Save AI response to DB
-                self.conversation_service.save_message(
-                    conversation=conversation,
-                    role="assistant",
-                    content=response
-                )
-
-                await update.message.reply_text(response, parse_mode=ParseMode.HTML)
-
-                # Check for insight (don't block on error)
-                try:
-                    has_insight = await self.ai_service.detect_insight(text)
-                    if has_insight:
-                        # Save insight text for card generation (Phase 2)
-                        context.user_data["last_insight_text"] = text
-                        await asyncio.sleep(1)
-                        
-                        if self.user_service.is_premium(user):
-                            prompt = msg.INSIGHT_DETECTED + "\n\n" + "Выбери стиль для своей карточки:"
-                            keyboard = kb.get_premium_card_keyboard()
-                        else:
-                            prompt = msg.INSIGHT_DETECTED + "\n\n" + msg.INSIGHT_SHARE_OFFER
-                            keyboard = kb.get_insight_share_keyboard()
-
-                        await update.message.reply_text(
-                            prompt,
-                            reply_markup=keyboard,
-                            parse_mode=ParseMode.HTML,
-                        )
-                except:
-                    pass  # Silently ignore insight detection errors
-            except Exception as e:
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.error(f"Error in thinking_dialogue mode: {e}")
-                # Show empathetic error message
-                await update.message.reply_text(
-                    "Упс, что-то пошло не так 😔\n\nДавай попробуем ещё раз, или можем вернуться к главному меню.",
-                    reply_markup=kb.get_back_to_menu_keyboard(),
-                    parse_mode=ParseMode.HTML,
-                )
+            await self._handle_thinking_dialogue_message(update, context)
+            return
 
         elif conversation_mode == "adding_win":
-            # User is adding a new win to their diary
-            telegram_user = update.effective_user
-            user = self.user_service.get_or_create_user(telegram_id=telegram_user.id)
-            
-            self.user_service.add_win(user, text)
-            
-            await update.message.reply_text(
-                "Отлично, победа записана! 💪",
-                reply_markup=kb.get_wins_keyboard()
-            )
-            context.user_data.pop("conversation_mode", None)
+            await self._handle_adding_win_message(update, context)
+            return
 
         else:
-            # Load conversation history and respond with context
-            telegram_user = update.effective_user
-            user = self.user_service.get_or_create_user(telegram_id=telegram_user.id)
-
-            # Try to get most recent active conversation
-            conversation = (
-                self.db.query(Conversation)
-                .filter(
-                    Conversation.user_id == user.id,
-                    Conversation.ended_at.is_(None)
-                )
-                .order_by(Conversation.started_at.desc())
-                .first()
-            )
-
-            if not conversation:
-                # Create new general conversation
-                conversation = self.conversation_service.get_or_create_conversation(
-                    user=user,
-                    conversation_type="general"
-                )
-                context.user_data["conversation_id"] = conversation.id
-                context.user_data["conversation_mode"] = "general"
-
-            # Load full conversation history from DB
-            conversation_history = self.conversation_service.get_conversation_history(
-                conversation=conversation,
-                limit=30  # Last 30 messages for context
-            )
-
-            # Save user message to DB
-            self.conversation_service.save_message(
-                conversation=conversation,
-                role="user",
-                content=text
-            )
-
-            try:
-                # Recall relevant memories
-                memories = self.memory_service.search_memories(
-                    user_id=telegram_user.id,
-                    query_text=text,
-                    n_results=5,
-                )
-                memory_context = ""
-                if memories:
-                    formatted_memories = "\n- ".join(memories)
-                    memory_context = f"Вот некоторые выдержки из наших прошлых разговоров:\n- {formatted_memories}"
-
-                # Get summary of recent topics for better context
-                recent_summary = self.conversation_service.get_recent_conversations_summary(
-                    user=user,
-                    days=7,
-                    limit=3
-                )
-
-                context_prompt = "Свободное общение. Используй АКТИВНОЕ СЛУШАНИЕ."
-                if recent_summary:
-                    context_prompt += f"\n\nКраткая история последних разговоров:\n{recent_summary}"
-                if memory_context:
-                    context_prompt += f"\n\n{memory_context}"
-
-
-                # Get AI response with full history
-                response = await self.ai_service.chat(
-                    user_message=text,
-                    conversation_history=conversation_history,
-                    context=context_prompt
-                )
-
-                # Save the turn to memory
-                self.memory_service.add_memory(
-                    user_id=telegram_user.id,
-                    text=f"User: {text}\nAssistant: {response}",
-                    metadata={"mode": "general"}
-                )
-
-                # Save AI response to DB
-                self.conversation_service.save_message(
-                    conversation=conversation,
-                    role="assistant",
-                    content=response
-                )
-
-                await update.message.reply_text(response, parse_mode=ParseMode.HTML)
-
-            except Exception as e:
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.error(f"Error in general conversation: {e}")
-                await update.message.reply_text(
-                    "Не совсем поняла 🤔\n\nВыбери, пожалуйста, что тебе нужно:",
-                    reply_markup=kb.get_main_menu_keyboard(),
-                    parse_mode=ParseMode.HTML,
-                )
+            await self._handle_general_conversation_message(update, context)
+            return
 
     async def feeling_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle feeling selection and provide validation"""
@@ -1163,11 +1316,24 @@ class BotHandlers:
     async def _create_card(self, update: Update, context: ContextTypes.DEFAULT_TYPE, template: str):
         """Handle create insight card request (Phase 2)"""
         query = update.callback_query
+
+        # Check rate limit for cards
+        is_allowed, remaining = self._check_rate_limit(context, "cards")
+        if not is_allowed:
+            await query.answer(
+                "Ты создала слишком много карточек за последний час. Попробуй позже!",
+                show_alert=True
+            )
+            return
+
         await query.answer("Создаю карточку... ✨")
 
         telegram_user = update.effective_user
 
         try:
+            # Record card creation
+            self._record_rate_limit_usage(context, "cards")
+
             # Get the insight text from context
             insight_text = context.user_data.get("last_insight_text", "")
 
@@ -1194,19 +1360,19 @@ class BotHandlers:
                 )
                 return
 
-            # Send the card as photo
-            await query.message.reply_photo(
-                photo=open(card_image, 'rb'), # Open file for sending
-                caption="Вот твоя карточка! Сохрани или поделись в Stories 💚",
-                parse_mode=ParseMode.HTML,
-            )
+            # Send the card as photo using context manager for safe file handling
+            with open(card_image, 'rb') as card_file:
+                await query.message.reply_photo(
+                    photo=card_file,
+                    caption="Вот твоя карточка! Сохрани или поделись в Stories 💚",
+                    parse_mode=ParseMode.HTML,
+                )
 
             # Clean up the generated file
-            import os
             try:
                 os.remove(card_image)
-            except:
-                pass # Ignore errors
+            except OSError as e:
+                logger.warning(f"Could not remove temporary card file {card_image}: {e}")
 
             # Show menu
             await query.edit_message_text(
@@ -1216,12 +1382,7 @@ class BotHandlers:
             )
 
         except Exception as e:
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.error(f"Error creating insight card: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
-
+            logger.error(f"Error creating insight card: {e}", exc_info=True)
             await query.edit_message_text(
                 "Ой, что-то пошло не так 😔\n\nПопробуй позже или выбери другое действие.",
                 reply_markup=kb.get_back_to_menu_keyboard(),
@@ -1230,11 +1391,11 @@ class BotHandlers:
 
     async def error_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle errors"""
-        print(f"Error: {context.error}")
+        logger.error(f"Error: {context.error}", exc_info=True)
 
-        if update.effective_message:
+        if update and update.effective_message:
             await update.effective_message.reply_text(
                 msg.ERROR_GENERIC,
                 reply_markup=kb.get_back_to_menu_keyboard(),
-            parse_mode=ParseMode.HTML,
-        )
+                parse_mode=ParseMode.HTML,
+            )

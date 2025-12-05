@@ -302,3 +302,75 @@ class AIService:
                 "confusion": "Когда теряешься — это тоже сложно. Растерянность часто означает, что ситуация не вписывается в наши ожидания. 🤔"
             }
             return fallbacks.get(emotion, "Я понимаю, что тебе сейчас непросто. Хочешь об этом поговорить? 💙")
+
+    async def thinking_dialogue(
+        self,
+        user_message: str,
+        conversation_history: Optional[List[Dict[str, str]]] = None,
+        context: Optional[str] = None,
+    ) -> str:
+        """
+        Generate a Socratic dialogue response to help user think through their situation
+        Uses open-ended questions to guide self-discovery
+
+        Args:
+            user_message: User's message
+            conversation_history: Previous messages
+            context: Additional context (memories, situation)
+
+        Returns:
+            Socratic response with guiding question
+        """
+        try:
+            socratic_prompt = """Ты ведёшь сократический диалог с пользователем.
+
+ЗАДАЧА: Помоги пользователю САМОСТОЯТЕЛЬНО прийти к осознаниям через наводящие вопросы.
+
+ПРАВИЛА:
+1. НЕ давай советов и готовых ответов
+2. Задавай ОДИН открытый вопрос за раз
+3. Отражай то, что услышала (1 предложение)
+4. Вопрос должен быть направлен на:
+   - Истинные желания ("Чего ты НА САМОМ ДЕЛЕ хочешь?")
+   - Страхи под поверхностью ("Что самое страшное может случиться?")
+   - Личные границы ("Что для тебя НЕ приемлемо?")
+   - Ценности ("Что для тебя важнее всего здесь?")
+
+ФОРМАТ:
+- Короткое отражение (1 предложение)
+- Один наводящий вопрос
+
+Пример:
+"Похоже, ты разрываешься между желанием угодить маме и своими интересами... А если бы мамы не было рядом — чего бы ТЫ хотела в этой ситуации?"
+"""
+
+            messages = [
+                {"role": "system", "content": self.system_prompt},
+                {"role": "system", "content": socratic_prompt}
+            ]
+
+            if context:
+                messages.append({
+                    "role": "system",
+                    "content": f"Контекст:\n{context}"
+                })
+
+            if conversation_history:
+                messages.extend(conversation_history[-10:])
+
+            messages.append({"role": "user", "content": user_message})
+
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=0.7,
+                max_tokens=300,
+            )
+
+            return response.choices[0].message.content.strip()
+
+        except Exception as e:
+            logger.error(f"Error in thinking_dialogue: {type(e).__name__}: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return "Это интересно... А что ты сама думаешь об этом?"

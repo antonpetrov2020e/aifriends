@@ -1,7 +1,7 @@
 """
 Database models for AI Friends bot
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import (
     Column,
     Integer,
@@ -12,10 +12,10 @@ from sqlalchemy import (
     ForeignKey,
     create_engine,
 )
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship, sessionmaker
+from sqlalchemy.orm import DeclarativeBase, relationship, sessionmaker
 
-Base = declarative_base()
+class Base(DeclarativeBase):
+    pass
 
 
 class User(Base):
@@ -31,20 +31,20 @@ class User(Base):
 
     # Consent and onboarding
     consent_given = Column(Boolean, default=False)
-    consent_date = Column(DateTime, nullable=True)
+    consent_date = Column(DateTime(timezone=True), nullable=True)
     onboarding_completed = Column(Boolean, default=False)
 
     # Premium status
     is_premium = Column(Boolean, default=False)
-    premium_until = Column(DateTime, nullable=True)
+    premium_until = Column(DateTime(timezone=True), nullable=True)
 
     # Usage tracking (for freemium limits)
     analyses_this_week = Column(Integer, default=0)
-    last_analysis_reset = Column(DateTime, default=datetime.utcnow)
+    last_analysis_reset = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     # Relationships
     conversations = relationship("Conversation", back_populates="user", cascade="all, delete-orphan")
@@ -68,8 +68,8 @@ class Conversation(Base):
     context_data = Column(Text, nullable=True)  # JSON-encoded context
 
     # Timestamps
-    started_at = Column(DateTime, default=datetime.utcnow)
-    ended_at = Column(DateTime, nullable=True)
+    started_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    ended_at = Column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     user = relationship("User", back_populates="conversations")
@@ -92,7 +92,7 @@ class Message(Base):
     message_type = Column(String(50), nullable=True)  # text, button_click, insight, etc.
 
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     # Relationships
     conversation = relationship("Conversation", back_populates="messages")
@@ -117,8 +117,8 @@ class Memory(Base):
     importance = Column(Integer, default=5)  # 1-10 scale
 
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow)
-    last_accessed = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    last_accessed = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     access_count = Column(Integer, default=0)
 
     # Relationships
@@ -140,10 +140,10 @@ class InsightCard(Base):
 
     # Virality tracking
     shared = Column(Boolean, default=False)
-    shared_at = Column(DateTime, nullable=True)
+    shared_at = Column(DateTime(timezone=True), nullable=True)
 
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
 class Win(Base):
@@ -155,7 +155,7 @@ class Win(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
 
     content = Column(Text, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     # Relationships
     user = relationship("User", back_populates="wins")

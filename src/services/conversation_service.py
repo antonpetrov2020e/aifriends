@@ -1,7 +1,7 @@
 """
 Conversation service for managing conversation history and memory
 """
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Dict
 from sqlalchemy.orm import Session
 import json
@@ -47,7 +47,7 @@ class ConversationService:
             conversation = Conversation(
                 user_id=user.id,
                 conversation_type=conversation_type,
-                started_at=datetime.utcnow(),
+                started_at=datetime.now(timezone.utc),
             )
             self.db.add(conversation)
             self.db.commit()
@@ -79,7 +79,7 @@ class ConversationService:
             role=role,
             content=content,
             message_type=message_type or "text",
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
         )
         self.db.add(message)
         self.db.commit()
@@ -104,7 +104,7 @@ class ConversationService:
         query = (
             self.db.query(Message)
             .filter(Message.conversation_id == conversation.id)
-            .order_by(Message.created_at.asc())
+            .order_by(Message.created_at.desc())
         )
 
         if limit:
@@ -112,6 +112,7 @@ class ConversationService:
             query = query.limit(limit)
 
         messages = query.all()
+        messages.reverse()
 
         return [
             {"role": msg.role, "content": msg.content}
@@ -135,8 +136,7 @@ class ConversationService:
         Returns:
             Text summary of recent conversations
         """
-        from datetime import timedelta
-        cutoff_date = datetime.utcnow() - timedelta(days=days)
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
 
         conversations = (
             self.db.query(Conversation)
@@ -171,7 +171,7 @@ class ConversationService:
 
     def end_conversation(self, conversation: Conversation) -> Conversation:
         """Mark conversation as ended"""
-        conversation.ended_at = datetime.utcnow()
+        conversation.ended_at = datetime.now(timezone.utc)
         self.db.commit()
         self.db.refresh(conversation)
         return conversation

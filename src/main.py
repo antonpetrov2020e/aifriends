@@ -84,107 +84,107 @@ def main():
     # Register callback query handlers
     # Onboarding callbacks (NEW)
     application.add_handler(
-        CallbackQueryHandler(handlers.onboarding_callback, pattern="^show_features$")
+        CallbackQueryHandler(handlers.onboarding_callback, pattern=f"^{c.SHOW_FEATURES}$")
     )
     application.add_handler(
-        CallbackQueryHandler(handlers.onboarding_callback, pattern="^skip_to_panic$")
+        CallbackQueryHandler(handlers.onboarding_callback, pattern=f"^{c.SKIP_TO_PANIC}$")
     )
     application.add_handler(
-        CallbackQueryHandler(handlers.onboarding_callback, pattern="^skip_onboarding$")
+        CallbackQueryHandler(handlers.onboarding_callback, pattern=f"^{c.SKIP_ONBOARDING}$")
     )
     application.add_handler(
-        CallbackQueryHandler(handlers.onboarding_callback, pattern="^first_need_")
+        CallbackQueryHandler(handlers.onboarding_callback, pattern=f"^{c.FIRST_NEED_PREFIX}")
     )
 
     # Consent callbacks
     application.add_handler(
-        CallbackQueryHandler(handlers.consent_callback, pattern="^consent_")
+        CallbackQueryHandler(handlers.consent_callback, pattern=f"^{c.CONSENT_PREFIX}")
     )
     application.add_handler(
-        CallbackQueryHandler(handlers.consent_callback, pattern="^privacy_policy$")
+        CallbackQueryHandler(handlers.consent_callback, pattern=f"^{c.PRIVACY_POLICY}$")
     )
 
     # Main menu callbacks
     application.add_handler(
-        CallbackQueryHandler(handlers.main_menu_callback, pattern="^back_to_menu$")
+        CallbackQueryHandler(handlers.main_menu_callback, pattern=f"^{c.BACK_TO_MENU}$")
     )
 
     # Panic button callbacks
     application.add_handler(
-        CallbackQueryHandler(handlers.panic_button, pattern="^panic$")
+        CallbackQueryHandler(handlers.panic_button, pattern=f"^{c.PANIC}$")
     )
     application.add_handler(
-        CallbackQueryHandler(handlers.panic_response_callback, pattern="^panic_")
+        CallbackQueryHandler(handlers.panic_response_callback, pattern=f"^{c.PANIC_PREFIX}")
     )
 
     # Analysis callbacks
     application.add_handler(
-        CallbackQueryHandler(handlers.analysis_start, pattern="^analysis_start$")
+        CallbackQueryHandler(handlers.analysis_start, pattern=f"^{c.ANALYSIS_START}$")
     )
     application.add_handler(
-        CallbackQueryHandler(handlers.situation_callback, pattern="^situation_")
+        CallbackQueryHandler(handlers.situation_callback, pattern=f"^{c.SITUATION_PREFIX}")
     )
     application.add_handler(
-        CallbackQueryHandler(handlers.feeling_callback, pattern="^feeling_")
+        CallbackQueryHandler(handlers.feeling_callback, pattern=f"^{c.FEELING_PREFIX}")
     )
 
     # Settings callbacks
     application.add_handler(
-        CallbackQueryHandler(handlers.settings_callback, pattern="^settings$")
+        CallbackQueryHandler(handlers.settings_callback, pattern=f"^{c.SETTINGS}$")
     )
     application.add_handler(
-        CallbackQueryHandler(handlers.settings_callback, pattern="^delete_history$")
+        CallbackQueryHandler(handlers.settings_callback, pattern=f"^{c.DELETE_HISTORY}$")
     )
     application.add_handler(
-        CallbackQueryHandler(handlers.settings_callback, pattern="^premium$")
+        CallbackQueryHandler(handlers.settings_callback, pattern=f"^{c.PREMIUM}$")
     )
     application.add_handler(
-        CallbackQueryHandler(handlers.check_payment_callback, pattern="^check_payment$")
+        CallbackQueryHandler(handlers.check_payment_callback, pattern=f"^{c.CHECK_PAYMENT}$")
     )
 
     # About callback
     application.add_handler(
-        CallbackQueryHandler(handlers.about_callback, pattern="^about$")
+        CallbackQueryHandler(handlers.about_callback, pattern=f"^{c.ABOUT}$")
     )
 
     # Journal callbacks
     application.add_handler(
-        CallbackQueryHandler(handlers.journal_start, pattern="^journal$")
+        CallbackQueryHandler(handlers.journal_start, pattern=f"^{c.JOURNAL}$")
     )
     application.add_handler(
-        CallbackQueryHandler(handlers.journal_callback, pattern="^journal_")
+        CallbackQueryHandler(handlers.journal_callback, pattern=f"^{c.JOURNAL_PREFIX}")
     )
 
     # Diary of Wins callbacks (Phase 3)
     application.add_handler(
-        CallbackQueryHandler(handlers.wins_callback, pattern="^diary_of_wins$")
+        CallbackQueryHandler(handlers.wins_callback, pattern=f"^{c.DIARY_OF_WINS}$")
     )
     application.add_handler(
-        CallbackQueryHandler(handlers.wins_callback, pattern="^add_win$")
+        CallbackQueryHandler(handlers.wins_callback, pattern=f"^{c.ADD_WIN}$")
     )
 
     # Delete confirmation callback
     application.add_handler(
-        CallbackQueryHandler(handlers.settings_callback, pattern="^confirm_delete$")
+        CallbackQueryHandler(handlers.settings_callback, pattern=f"^{c.CONFIRM_DELETE}$")
     )
     application.add_handler(
-        CallbackQueryHandler(handlers.settings_callback, pattern="^notifications$")
+        CallbackQueryHandler(handlers.settings_callback, pattern=f"^{c.NOTIFICATIONS}$")
     )
 
     # Navigation callbacks (back_to_analysis, continue_talk)
     application.add_handler(
-        CallbackQueryHandler(handlers.navigation_callback, pattern="^back_to_analysis$")
+        CallbackQueryHandler(handlers.navigation_callback, pattern=f"^{c.BACK_TO_ANALYSIS}$")
     )
     application.add_handler(
-        CallbackQueryHandler(handlers.navigation_callback, pattern="^continue_talk$")
+        CallbackQueryHandler(handlers.navigation_callback, pattern=f"^{c.CONTINUE_TALK}$")
     )
 
     # Card callbacks (create_card, skip_card) - Phase 2
     application.add_handler(
-        CallbackQueryHandler(handlers.insight_card_callback, pattern="^skip_card$")
+        CallbackQueryHandler(handlers.insight_card_callback, pattern=f"^{c.SKIP_CARD}$")
     )
     application.add_handler(
-        CallbackQueryHandler(handlers.insight_card_callback, pattern="^create_card_")
+        CallbackQueryHandler(handlers.insight_card_callback, pattern=f"^{c.CREATE_CARD_PREFIX}")
     )
 
     # Text message handler (for free-form responses)

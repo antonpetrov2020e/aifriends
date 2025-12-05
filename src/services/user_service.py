@@ -1,9 +1,10 @@
 """
 User service for managing user data and consent
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from sqlalchemy.orm import Session
+import logging
 
 from ..database.models import User
 
@@ -33,7 +34,7 @@ class UserService:
     def give_consent(self, user: User) -> User:
         """Mark user as having given consent"""
         user.consent_given = True
-        user.consent_date = datetime.utcnow()
+        user.consent_date = datetime.now(timezone.utc)
         self.db.commit()
         self.db.refresh(user)
         return user
@@ -66,11 +67,11 @@ class UserService:
             return True, -1  # -1 means unlimited
 
         # Check if week has passed since last reset
-        week_ago = datetime.utcnow() - timedelta(days=7)
+        week_ago = datetime.now(timezone.utc) - timedelta(days=7)
         if user.last_analysis_reset < week_ago:
             # Reset counter
             user.analyses_this_week = 0
-            user.last_analysis_reset = datetime.utcnow()
+            user.last_analysis_reset = datetime.now(timezone.utc)
             self.db.commit()
 
         remaining = free_limit - user.analyses_this_week
@@ -95,7 +96,7 @@ class UserService:
             return True
         except Exception as e:
             self.db.rollback()
-            print(f"Error deleting user history: {e}")
+            logging.error(f"Error deleting user history: {e}")
             return False
 
     def delete_user_data(self, user: User) -> bool:
@@ -111,13 +112,13 @@ class UserService:
 
             # Reset usage counters
             user.analyses_this_week = 0
-            user.last_analysis_reset = datetime.utcnow()
+            user.last_analysis_reset = datetime.now(timezone.utc)
 
             self.db.commit()
             return True
         except Exception as e:
             self.db.rollback()
-            print(f"Error deleting user data: {e}")
+            logging.error(f"Error deleting user data: {e}")
             return False
 
     def is_premium(self, user: User) -> bool:
@@ -125,18 +126,27 @@ class UserService:
         if not user.is_premium:
             return False
 
-        if user.premium_until and user.premium_until < datetime.utcnow():
-            # Premium expired
-            user.is_premium = False
-            self.db.commit()
-            return False
+        if user.premium_until:
+            # Handle both naive and aware datetimes
+            premium_until = user.premium_until
+            now = datetime.now(timezone.utc)
+
+            # If premium_until is naive, assume it's UTC
+            if premium_until.tzinfo is None:
+                premium_until = premium_until.replace(tzinfo=timezone.utc)
+
+            if premium_until < now:
+                # Premium expired
+                user.is_premium = False
+                self.db.commit()
+                return False
 
         return True
 
     def grant_premium(self, user: User, days: int) -> User:
         """Grant premium access to a user for a number of days."""
         user.is_premium = True
-        user.premium_until = datetime.utcnow() + timedelta(days=days)
+        user.premium_until = datetime.now(timezone.utc) + timedelta(days=days)
         self.db.commit()
         self.db.refresh(user)
         return user
