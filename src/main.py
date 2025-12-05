@@ -193,6 +193,11 @@ def main():
         MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.handle_text_message)
     )
 
+    # Voice message handler
+    application.add_handler(
+        MessageHandler(filters.VOICE | filters.AUDIO, handlers.handle_voice_message)
+    )
+
     # Error handler
     application.add_error_handler(handlers.error_handler)
 

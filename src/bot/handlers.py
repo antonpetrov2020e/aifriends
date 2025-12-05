@@ -1514,3 +1514,15 @@ class BotHandlers:
                 reply_markup=kb.get_back_to_menu_keyboard(),
                 parse_mode=ParseMode.HTML,
             )
+
+    async def handle_voice_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle voice messages - politely ask for text"""
+        telegram_user = update.effective_user
+        user = self.user_service.get_or_create_user(telegram_id=telegram_user.id)
+        display_name = self.user_service.get_display_name(user)
+
+        await update.message.reply_text(
+            f"{display_name}, я пока не умею слушать голосовые сообщения 🎤\n\n"
+            "Напиши мне текстом — так я смогу лучше тебя понять и помочь 💬",
+            parse_mode=ParseMode.HTML,
+        )
