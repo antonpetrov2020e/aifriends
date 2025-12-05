@@ -172,8 +172,11 @@ class BotHandlers:
             )
 
             if last_conv:
-                from datetime import datetime
-                days_ago = (datetime.now(timezone.utc) - last_conv.started_at).days
+                # Handle naive datetime from DB
+                started_at = last_conv.started_at
+                if started_at.tzinfo is None:
+                    started_at = started_at.replace(tzinfo=timezone.utc)
+                days_ago = (datetime.now(timezone.utc) - started_at).days
 
                 if days_ago == 0:
                     greeting = f"С возвращением, {display_name}! 👋\n\nПродолжим?"
