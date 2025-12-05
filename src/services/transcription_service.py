@@ -5,14 +5,14 @@ Deepgram works in Russia and has a free tier (45 hours).
 import logging
 import tempfile
 import os
-from deepgram import DeepgramClient
+import httpx
 
 logger = logging.getLogger(__name__)
 
 
 class TranscriptionService:
     """
-    Handles transcription of audio files using Deepgram API.
+    Handles transcription of audio files using Deepgram API (REST).
     """
 
     def __init__(self, api_key: str):
@@ -22,7 +22,8 @@ class TranscriptionService:
         Args:
             api_key: Deepgram API key
         """
-        self.client = DeepgramClient(api_key=api_key)
+        self.api_key = api_key
+        self.base_url = "https://api.deepgram.com/v1/listen"
 
     async def transcribe_audio(self, audio_file_path: str, language: str = "ru") -> str:
         """
@@ -37,24 +38,33 @@ class TranscriptionService:
         """
         try:
             with open(audio_file_path, "rb") as audio_file:
-                buffer_data = audio_file.read()
+                audio_data = audio_file.read()
 
-            payload = {
-                "buffer": buffer_data,
+            headers = {
+                "Authorization": f"Token {self.api_key}",
+                "Content-Type": "audio/ogg",
             }
 
-            options = {
+            params = {
                 "model": "nova-2",
                 "language": language,
-                "smart_format": True,
+                "smart_format": "true",
             }
 
-            response = await self.client.listen.asyncrest.v("1").transcribe_file(
-                payload, options
-            )
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    self.base_url,
+                    headers=headers,
+                    params=params,
+                    content=audio_data,
+                )
 
-            # Extract transcript from response
-            transcript = response.results.channels[0].alternatives[0].transcript
+            if response.status_code != 200:
+                logger.error(f"Deepgram API error: {response.status_code} - {response.text}")
+                return ""
+
+            result = response.json()
+            transcript = result.get("results", {}).get("channels", [{}])[0].get("alternatives", [{}])[0].get("transcript", "")
             return transcript.strip() if transcript else ""
 
         except Exception as e:
