@@ -764,11 +764,23 @@ class BotHandlers:
         conversation_history.append({"role": "user", "content": text})
 
         try:
+            # Get relevant memories for context
+            memory_context = self.memory_service.get_context_for_conversation(
+                user_id=telegram_user.id,
+                current_message=text,
+                n_results=3
+            )
+
+            # Build context for AI
+            ai_context = f"Это продолжение разговора с {display_name} о её ситуации. Продолжай активное слушание, задавай открытые вопросы, помогай разобраться в чувствах. Обращайся по имени иногда."
+            if memory_context:
+                ai_context += f"\n\n{memory_context}"
+
             # Continue empathetic dialogue
             ai_response = await self.ai_service.chat(
                 user_message=text,
                 conversation_history=conversation_history,
-                context=f"Это продолжение разговора с {display_name} о её ситуации. Продолжай активное слушание, задавай открытые вопросы, помогай разобраться в чувствах. Обращайся по имени иногда."
+                context=ai_context
             )
 
             # Save AI response
@@ -776,6 +788,13 @@ class BotHandlers:
                 conversation=conversation,
                 role="assistant",
                 content=ai_response
+            )
+
+            # Save turn to memory for future context
+            self.memory_service.add_memory(
+                user_id=telegram_user.id,
+                text=f"Разговор: {text[:100]}... -> {ai_response[:100]}...",
+                metadata={"mode": "analysis_dialogue", "conversation_id": str(conversation_id)}
             )
 
             # Update history
@@ -1256,8 +1275,53 @@ class BotHandlers:
                 )
 
         elif query.data == "notifications":
-            # Notifications settings (placeholder for Phase 2)
-            await query.answer("Настройка уведомлений появится в следующей версии!", show_alert=True)
+            # Show notifications settings
+            notifications_enabled = getattr(user, 'notifications_enabled', False)
+            morning_time = getattr(user, 'notification_morning_time', "09:00")
+            evening_time = getattr(user, 'notification_evening_time', "21:00")
+
+            status = "✅ Включены" if notifications_enabled else "❌ Выключены"
+
+            notifications_text = f"""🔔 **Настройки уведомлений**
+
+**Статус:** {status}
+
+Когда уведомления включены, я буду:
+• Напоминать о себе утром ({morning_time}) и вечером ({evening_time})
+• Спрашивать, как у тебя дела
+• Напоминать о незавершенных разговорах
+
+Это помогает не забывать про себя в суете дней 💚"""
+
+            keyboard = []
+            if notifications_enabled:
+                keyboard.append([InlineKeyboardButton("🔕 Выключить уведомления", callback_data="notifications_off")])
+            else:
+                keyboard.append([InlineKeyboardButton("🔔 Включить уведомления", callback_data="notifications_on")])
+            keyboard.append([InlineKeyboardButton("« Назад", callback_data="settings")])
+
+            await query.edit_message_text(
+                notifications_text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="Markdown",
+            )
+
+        elif query.data == "notifications_on":
+            # Enable notifications
+            user.notifications_enabled = True
+            self.db.commit()
+            await query.answer("✅ Уведомления включены!")
+            # Refresh the settings screen
+            context.user_data["_refresh_notifications"] = True
+            await self.settings_callback(update, context)
+
+        elif query.data == "notifications_off":
+            # Disable notifications
+            user.notifications_enabled = False
+            self.db.commit()
+            await query.answer("🔕 Уведомления выключены")
+            context.user_data["_refresh_notifications"] = True
+            await self.settings_callback(update, context)
 
         elif query.data == "premium":
             # Show premium subscription info

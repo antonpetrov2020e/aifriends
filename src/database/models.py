@@ -42,6 +42,11 @@ class User(Base):
     analyses_this_week = Column(Integer, default=0)
     last_analysis_reset = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
+    # Notification settings
+    notifications_enabled = Column(Boolean, default=False)
+    notification_morning_time = Column(String(5), default="09:00")  # HH:MM format
+    notification_evening_time = Column(String(5), default="21:00")  # HH:MM format
+
     # Timestamps
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
@@ -170,6 +175,7 @@ def init_db(database_url: str):
 
     # Run migrations for existing databases
     _migrate_add_preferred_name(engine)
+    _migrate_add_notification_fields(engine)
 
     return engine
 
@@ -197,6 +203,35 @@ def _migrate_add_preferred_name(engine):
             except Exception as e:
                 print(f"⚠️  Migration warning: {e}")
                 # Column might already exist, ignore
+
+
+def _migrate_add_notification_fields(engine):
+    """Migration: Add notification columns to users table if missing"""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(engine)
+
+    # Check if users table exists
+    if 'users' not in inspector.get_table_names():
+        return
+
+    columns = [col['name'] for col in inspector.get_columns('users')]
+
+    migrations = [
+        ("notifications_enabled", "ALTER TABLE users ADD COLUMN notifications_enabled BOOLEAN DEFAULT 0"),
+        ("notification_morning_time", "ALTER TABLE users ADD COLUMN notification_morning_time VARCHAR(5) DEFAULT '09:00'"),
+        ("notification_evening_time", "ALTER TABLE users ADD COLUMN notification_evening_time VARCHAR(5) DEFAULT '21:00'"),
+    ]
+
+    with engine.connect() as conn:
+        for column_name, sql in migrations:
+            if column_name not in columns:
+                try:
+                    conn.execute(text(sql))
+                    conn.commit()
+                    print(f"✅ Migration: Added '{column_name}' column to users table")
+                except Exception as e:
+                    print(f"⚠️  Migration warning for {column_name}: {e}")
 
 
 def get_session(engine):

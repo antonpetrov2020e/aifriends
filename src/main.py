@@ -21,6 +21,7 @@ from .services.memory_service import MemoryService
 from .services.card_service import CardService
 from .services.payment_service import payment_service
 from .services.transcription_service import TranscriptionService
+from .services.notification_service import NotificationService
 
 
 # Configure logging
@@ -62,6 +63,10 @@ def main():
         transcription_service = TranscriptionService(api_key=settings.deepgram_api_key)
     else:
         logger.info("Transcription service disabled (DEEPGRAM_API_KEY not set or TRANSCRIPTION_ENABLED=false)")
+
+    # Initialize Notification service
+    logger.info("Initializing Notification service...")
+    notification_service = NotificationService(db_session=db_session)
 
     # Initialize handlers
     logger.info("Initializing bot handlers...")
@@ -181,6 +186,18 @@ def main():
     application.add_handler(
         CallbackQueryHandler(handlers.settings_callback, pattern=f"^{c.NOTIFICATIONS}$")
     )
+    application.add_handler(
+        CallbackQueryHandler(handlers.settings_callback, pattern="^notifications_on$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(handlers.settings_callback, pattern="^notifications_off$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(handlers.settings_callback, pattern="^payment_demo$")
+    )
+    application.add_handler(
+        CallbackQueryHandler(handlers.settings_callback, pattern="^payment_processing$")
+    )
 
     # Navigation callbacks (back_to_analysis, continue_talk)
     application.add_handler(
@@ -210,6 +227,25 @@ def main():
 
     # Error handler
     application.add_error_handler(handlers.error_handler)
+
+    # Setup notification scheduler as a post_init job
+    async def post_init(app):
+        """Start background jobs after bot is initialized."""
+        from .jobs.notification_job import start_notification_scheduler
+        import asyncio
+
+        logger.info("Starting notification scheduler...")
+        # Start scheduler as background task
+        asyncio.create_task(
+            start_notification_scheduler(
+                db_session=db_session,
+                bot=app.bot,
+                memory_service=memory_service,
+                interval_seconds=3600,  # Check every hour
+            )
+        )
+
+    application.post_init = post_init
 
     # Start the bot
     logger.info("Starting bot polling...")
