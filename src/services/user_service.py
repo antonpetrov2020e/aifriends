@@ -63,12 +63,18 @@ class UserService:
         Returns (can_analyze, remaining_count)
         """
         # Premium users have unlimited access
-        if user.is_premium:
+        if self.is_premium(user):
             return True, -1  # -1 means unlimited
 
         # Check if week has passed since last reset
         week_ago = datetime.now(timezone.utc) - timedelta(days=7)
-        if user.last_analysis_reset < week_ago:
+
+        # Handle naive datetime from DB
+        last_reset = user.last_analysis_reset
+        if last_reset and last_reset.tzinfo is None:
+            last_reset = last_reset.replace(tzinfo=timezone.utc)
+
+        if last_reset is None or last_reset < week_ago:
             # Reset counter
             user.analyses_this_week = 0
             user.last_analysis_reset = datetime.now(timezone.utc)
