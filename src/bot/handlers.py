@@ -1183,43 +1183,83 @@ class BotHandlers:
             await query.answer("Настройка уведомлений появится в следующей версии!", show_alert=True)
 
         elif query.data == "premium":
-            # Initiate payment flow (Phase 3)
-            if not self.payment_service:
-                await query.answer("Функция оплаты временно недоступна.", show_alert=True)
-                return
-
+            # Show premium subscription info
             price = settings.premium_price_monthly
-            description = f"Premium-подписка на 1 месяц"
 
-            payment = self.payment_service.create_payment(
-                user_id=user.id,
-                amount=float(price),
-                description=description,
-            )
+            premium_text = f"""👑 **Premium подписка**
 
-            if payment and payment.confirmation and payment.confirmation.confirmation_url:
-                # Save payment ID for checking later
-                context.user_data["pending_payment_id"] = payment.id
+**Стоимость:** {price}₽ / месяц
 
-                keyboard = [
-                    [InlineKeyboardButton(f"💳 Оплатить {price}₽", url=payment.confirmation.confirmation_url)],
-                    [InlineKeyboardButton("✅ Я оплатила", callback_data="check_payment")],
-                    [InlineKeyboardButton("« Назад", callback_data="settings")],
-                ]
-                reply_markup = InlineKeyboardMarkup(keyboard)
-
-                premium_text = f"""👑 **Premium подписка**
-
-Что входит:
-✅ Безлимитные "Разборы полетов"
+**Что входит:**
+✅ Безлимитные "Разборы полётов" (вместо 3 в неделю)
 ✅ Расширенная память обо всех наших разговорах
+✅ Дневник побед — записывай свои достижения
 ✅ Премиум-шаблоны для карточек инсайтов
 ✅ Приоритетная поддержка
 
-Нажми кнопку ниже, чтобы перейти к оплате. После успешной оплаты возвращайся и нажми "Я оплатила"."""
-                await query.edit_message_text(premium_text, reply_markup=reply_markup, parse_mode="Markdown")
+**Как это работает:**
+После оплаты Premium активируется мгновенно. Ты сможешь пользоваться всеми функциями без ограничений целый месяц."""
+
+            # Check if payment service is configured
+            if self.payment_service:
+                payment = self.payment_service.create_payment(
+                    user_id=user.id,
+                    amount=float(price),
+                    description="Premium-подписка на 1 месяц",
+                )
+
+                if payment and payment.confirmation and payment.confirmation.confirmation_url:
+                    context.user_data["pending_payment_id"] = payment.id
+                    keyboard = [
+                        [InlineKeyboardButton(f"💳 Оплатить {price}₽", url=payment.confirmation.confirmation_url)],
+                        [InlineKeyboardButton("✅ Я оплатила", callback_data="check_payment")],
+                        [InlineKeyboardButton("« Назад", callback_data="settings")],
+                    ]
+                else:
+                    keyboard = [
+                        [InlineKeyboardButton(f"💳 Оплатить {price}₽", callback_data="payment_demo")],
+                        [InlineKeyboardButton("« Назад", callback_data="settings")],
+                    ]
             else:
-                await query.answer("Не удалось создать ссылку для оплаты. Попробуй позже.", show_alert=True)
+                # Demo mode - show interface without real payment
+                keyboard = [
+                    [InlineKeyboardButton(f"💳 Оплатить {price}₽", callback_data="payment_demo")],
+                    [InlineKeyboardButton("« Назад", callback_data="settings")],
+                ]
+
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text(premium_text, reply_markup=reply_markup, parse_mode="Markdown")
+
+        elif query.data == "payment_demo":
+            # Demo payment screen (for YooKassa screenshots)
+            price = settings.premium_price_monthly
+            demo_text = f"""💳 **Оформление заказа**
+
+**Товар:** Premium подписка (1 месяц)
+**Сумма:** {price}₽
+
+━━━━━━━━━━━━━━━━━━━━
+
+🔒 Безопасная оплата через ЮKassa
+
+Доступные способы оплаты:
+• Банковская карта (Visa, MasterCard, МИР)
+• СБП (Система быстрых платежей)
+• ЮMoney
+• SberPay
+
+После оплаты Premium активируется автоматически."""
+
+            keyboard = [
+                [InlineKeyboardButton("💳 Перейти к оплате", callback_data="payment_processing")],
+                [InlineKeyboardButton("« Назад", callback_data="premium")],
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text(demo_text, reply_markup=reply_markup, parse_mode="Markdown")
+
+        elif query.data == "payment_processing":
+            # Demo: payment in progress
+            await query.answer("⏳ Подключение платёжной системы в процессе. Скоро будет доступно!", show_alert=True)
 
     async def check_payment_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle 'check_payment' button after user initiates payment"""
