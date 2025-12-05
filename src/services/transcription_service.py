@@ -1,18 +1,19 @@
 """
-Service for transcribing voice messages using OpenAI Whisper API.
+Service for transcribing voice messages using Groq Whisper API.
+Groq provides free and fast Whisper transcription.
 """
 import logging
 import tempfile
 import os
-from openai import AsyncOpenAI
+from groq import AsyncGroq
 
 logger = logging.getLogger(__name__)
 
 
 class TranscriptionService:
     """
-    Handles transcription of audio files using OpenAI Whisper API.
-    Uses OpenAI directly (not OpenRouter) as Whisper is not available via OpenRouter.
+    Handles transcription of audio files using Groq's Whisper API.
+    Groq offers free, fast Whisper transcription.
     """
 
     def __init__(self, api_key: str):
@@ -20,9 +21,9 @@ class TranscriptionService:
         Initialize the transcription service.
 
         Args:
-            api_key: OpenAI API key for Whisper API access
+            api_key: Groq API key for Whisper API access
         """
-        self.client = AsyncOpenAI(api_key=api_key)
+        self.client = AsyncGroq(api_key=api_key)
 
     async def transcribe_audio(self, audio_file_path: str, language: str = "ru") -> str:
         """
@@ -38,7 +39,7 @@ class TranscriptionService:
         try:
             with open(audio_file_path, "rb") as audio_file:
                 transcription = await self.client.audio.transcriptions.create(
-                    model="whisper-1",
+                    model="whisper-large-v3",
                     file=audio_file,
                     language=language,
                     response_format="text",
