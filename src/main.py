@@ -15,6 +15,7 @@ from telegram.ext import (
 from .config import settings
 from .database import init_db, get_session
 from .bot.handlers import BotHandlers
+from .bot import constants as c
 from .services.ai_service import AIService
 from .services.memory_service import MemoryService
 from .services.card_service import CardService
